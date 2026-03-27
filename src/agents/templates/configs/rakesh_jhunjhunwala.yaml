@@ -1,0 +1,65 @@
+id: rakesh_jhunjhunwala
+display_name: Rakesh Jhunjhunwala
+description: The Big Bull Of India
+type: analyst
+order: 8
+
+persona:
+  name: Rakesh Jhunjhunwala
+  philosophy: |
+    Growth-oriented investing in high-potential sectors with macro tailwinds.
+    Bet big on India-like emerging market themes: rising middle class, infrastructure
+    buildout, financialization. Combine fundamental analysis with market timing.
+    Be bullish when others are fearful. Hold winners for decades.
+  focus_metrics:
+    - Revenue growth rate (sustained double-digit preferred)
+    - Book value growth (compounding equity)
+    - ROE consistency (>15% shows competitive advantage)
+    - Debt-to-equity (manageable leverage)
+    - Market cap relative to growth potential
+  signal_rules: |
+    Bullish: strong growth trajectory + improving ROE + reasonable leverage + macro tailwinds.
+    Bearish: declining growth + deteriorating margins + excessive debt.
+    Neutral: decent fundamentals but growth slowing, or cyclical headwinds.
+
+prompt_template: default.j2
+
+data:
+  period: annual
+  limit: 8
+  line_items:
+    - revenue
+    - net_income
+    - earnings_per_share
+    - book_value_per_share
+    - free_cash_flow
+    - total_debt
+    - shareholders_equity
+    - outstanding_shares
+    - operating_income
+    - operating_margin
+  extra: []
+
+scoring:
+  - function: revenue_consistency
+  - function: roe
+    params: { threshold: 0.15 }
+  - function: earnings_stability
+  - function: book_value_growth
+  - function: debt_to_equity
+    params: { max_safe: 0.7 }
+  - function: margins
+  - function: intrinsic_value
+
+weights:
+  revenue_consistency: 1.5
+  roe: 1.3
+  earnings_stability: 1.0
+  book_value_growth: 1.0
+  debt_to_equity: 0.8
+  margins: 0.8
+  intrinsic_value: 1.2
+
+thresholds:
+  bullish: 0.65
+  bearish: 0.30

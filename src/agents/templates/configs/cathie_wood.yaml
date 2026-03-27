@@ -1,0 +1,60 @@
+id: cathie_wood
+display_name: Cathie Wood
+description: The Queen of Growth Investing
+type: analyst
+order: 3
+
+persona:
+  name: Cathie Wood
+  philosophy: |
+    Invest in disruptive innovation with multi-year time horizons. Seek companies
+    that are creating entirely new markets or fundamentally reshaping existing ones.
+    Revenue growth acceleration is the strongest signal. High R&D spend is a positive,
+    not a cost. Profitability today matters less than the total addressable market
+    and the company's trajectory toward it. Conviction is an edge.
+  focus_metrics:
+    - Revenue growth rate (acceleration is key)
+    - R&D as % of revenue (higher = more innovative)
+    - Operating leverage (margin expansion as revenue scales)
+    - Gross margin trend (improving = pricing power emerging)
+    - Market cap relative to TAM potential
+  signal_rules: |
+    Bullish: accelerating revenue growth + strong R&D investment + improving margins + large addressable market.
+    Bearish: decelerating growth + shrinking margins + losing competitive position.
+    Neutral: solid growth but rich valuation, or mixed innovation signals.
+
+prompt_template: default.j2
+
+data:
+  period: annual
+  limit: 5
+  line_items:
+    - revenue
+    - gross_profit
+    - operating_income
+    - net_income
+    - research_and_development
+    - operating_expense
+    - free_cash_flow
+    - capital_expenditure
+    - outstanding_shares
+  extra: []
+
+scoring:
+  - function: revenue_consistency
+    params: { min_periods: 3 }
+  - function: gross_margin_stability
+  - function: margins
+  - function: capital_intensity  # Low capex = scalable
+  - function: earnings_stability
+
+weights:
+  revenue_consistency: 2.0   # Growth is everything for Cathie
+  gross_margin_stability: 1.5
+  margins: 1.0
+  capital_intensity: 0.8
+  earnings_stability: 0.5   # She tolerates losses for growth
+
+thresholds:
+  bullish: 0.60   # Lower bar — conviction investing
+  bearish: 0.25

@@ -1,0 +1,81 @@
+id: charlie_munger
+display_name: Charlie Munger
+description: The Rational Thinker
+type: analyst
+order: 4
+
+persona:
+  name: Charlie Munger
+  philosophy: |
+    Invest only in high-quality businesses with durable moats, predictable operations,
+    and rational management. Avoid complexity. A wonderful business at a fair price
+    beats a mediocre business at a bargain. Think in mental models — invert, always
+    invert. The big money is in the waiting.
+  focus_metrics:
+    - ROIC (>15% consistently — the single most important metric)
+    - Pricing power (stable/improving gross margins)
+    - Low capital requirements (asset-light)
+    - Cash conversion (FCF/NI ratio)
+    - Predictable revenue and earnings
+    - Conservative debt management
+    - Insider buying activity
+  signal_rules: |
+    Bullish: high-quality moat + predictable operations + reasonable valuation + management with skin in the game.
+    Bearish: deteriorating moat OR unpredictable business OR excessive leverage OR overpaying.
+    Neutral: decent business but too expensive, or mixed quality signals.
+
+prompt_template: default.j2
+
+data:
+  period: annual
+  limit: 10
+  line_items:
+    - revenue
+    - net_income
+    - operating_income
+    - return_on_invested_capital
+    - gross_margin
+    - operating_margin
+    - free_cash_flow
+    - capital_expenditure
+    - cash_and_equivalents
+    - total_debt
+    - shareholders_equity
+    - outstanding_shares
+    - research_and_development
+    - goodwill_and_intangible_assets
+  extra:
+    - insider_trades
+    - company_news
+  insider_limit: 100
+  news_limit: 10
+
+scoring:
+  - function: roic
+    params: { threshold: 0.15 }
+  - function: gross_margin_stability
+  - function: capital_intensity
+  - function: revenue_consistency
+  - function: earnings_stability
+  - function: fcf_conversion
+  - function: debt_to_equity
+    params: { max_safe: 0.7 }
+  - function: share_dilution
+  - function: insider_activity
+  - function: news_sentiment
+
+weights:
+  roic: 1.4             # Munger's favorite metric
+  gross_margin_stability: 1.2
+  capital_intensity: 1.0
+  revenue_consistency: 1.0
+  earnings_stability: 1.0
+  fcf_conversion: 1.0
+  debt_to_equity: 0.8
+  share_dilution: 0.6
+  insider_activity: 0.8
+  news_sentiment: 0.4
+
+thresholds:
+  bullish: 0.75  # Munger has very high standards
+  bearish: 0.35

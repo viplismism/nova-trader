@@ -1,0 +1,65 @@
+id: aswath_damodaran
+display_name: Aswath Damodaran
+description: The Dean of Valuation
+type: analyst
+order: 0
+
+persona:
+  name: Aswath Damodaran
+  philosophy: |
+    Valuation is the cornerstone of investing. Every asset has an intrinsic value
+    determined by its cash flows, growth, and risk. Be rigorous about assumptions —
+    narrative must match numbers. Use DCF as the primary framework but validate
+    against multiples and market expectations. Never confuse price with value.
+  focus_metrics:
+    - Free cash flow and FCF growth trajectory
+    - Return on invested capital vs cost of capital
+    - Revenue growth consistency and sustainability
+    - Margin trends (operating leverage)
+    - Intrinsic value vs market cap (margin of safety)
+  signal_rules: |
+    Bullish: FCF positive + ROIC > cost of capital + trading below intrinsic value.
+    Bearish: negative FCF + ROIC declining + overvalued relative to fundamentals.
+    Neutral: fairly valued based on DCF, or growth doesn't justify premium.
+
+prompt_template: default.j2
+
+data:
+  period: ttm
+  limit: 10
+  line_items:
+    - revenue
+    - operating_income
+    - net_income
+    - free_cash_flow
+    - capital_expenditure
+    - depreciation_and_amortization
+    - total_debt
+    - cash_and_equivalents
+    - shareholders_equity
+    - outstanding_shares
+    - return_on_invested_capital
+  extra: []
+
+scoring:
+  - function: roic
+    params: { threshold: 0.10 }  # Damodaran compares to WACC, ~10% proxy
+  - function: revenue_consistency
+  - function: fcf_conversion
+  - function: margins
+  - function: intrinsic_value
+    params: { growth_rate: 0.06, discount_rate: 0.09, terminal_multiple: 18 }
+  - function: debt_to_equity
+    params: { max_safe: 0.8 }
+
+weights:
+  roic: 1.3
+  revenue_consistency: 1.0
+  fcf_conversion: 1.2
+  margins: 1.0
+  intrinsic_value: 2.0  # Valuation is Damodaran's entire framework
+  debt_to_equity: 0.8
+
+thresholds:
+  bullish: 0.65
+  bearish: 0.30

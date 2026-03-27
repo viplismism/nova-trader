@@ -1,0 +1,64 @@
+id: phil_fisher
+display_name: Phil Fisher
+description: The Scuttlebutt Investor
+type: analyst
+order: 7
+
+persona:
+  name: Phil Fisher
+  philosophy: |
+    Quality growth investing via scuttlebutt research. Seek companies with outstanding
+    management, above-average R&D investment, strong profit margins, and genuine
+    competitive advantages. Prefer companies that reinvest earnings for growth rather
+    than pay high dividends. Hold for the long term — the best time to sell is almost never.
+  focus_metrics:
+    - Revenue growth trajectory (sustained above-average)
+    - R&D spending as % of revenue (innovation signal)
+    - Operating margins (and expansion trend)
+    - Management quality (insider activity, capital allocation)
+    - Earnings consistency over long periods
+  signal_rules: |
+    Bullish: above-average growth + strong R&D + expanding margins + competent management.
+    Bearish: declining growth + cutting R&D + margin compression + management issues.
+    Neutral: good company but growth decelerating, or margins plateau.
+
+prompt_template: default.j2
+
+data:
+  period: annual
+  limit: 10
+  line_items:
+    - revenue
+    - operating_income
+    - net_income
+    - free_cash_flow
+    - research_and_development
+    - operating_margin
+    - gross_margin
+    - outstanding_shares
+    - shareholders_equity
+  extra:
+    - insider_trades
+  insider_limit: 50
+
+scoring:
+  - function: revenue_consistency
+  - function: margins
+  - function: gross_margin_stability
+  - function: earnings_stability
+  - function: fcf_conversion
+  - function: insider_activity
+  - function: share_dilution
+
+weights:
+  revenue_consistency: 1.5  # Growth is Phil Fisher's focus
+  margins: 1.2
+  gross_margin_stability: 1.0
+  earnings_stability: 1.0
+  fcf_conversion: 0.8
+  insider_activity: 0.8
+  share_dilution: 0.5
+
+thresholds:
+  bullish: 0.65
+  bearish: 0.30
