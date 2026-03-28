@@ -68,6 +68,56 @@ SYM_DOT = "⏺"
 SYM_RESULT = "⎿"
 SYM_PROMPT = "❯"
 
+# ── Common words to exclude from ticker extraction ─────────
+_COMMON_WORDS = frozenset({
+    "a", "an", "the", "is", "it", "in", "on", "at", "to", "of", "or", "i",
+    "and", "for", "not", "but", "nor", "so", "yet", "can", "do", "did",
+    "be", "am", "are", "was", "were", "has", "had", "have", "may", "will",
+    "if", "by", "my", "we", "me", "he", "she", "no", "yes", "up", "go",
+    "you", "your", "our", "us", "them", "they", "its", "his", "her",
+    "what", "when", "where", "who", "how", "why", "which", "that", "this",
+    "with", "from", "into", "about", "over", "just", "also", "some", "all",
+    "any", "each", "much", "more", "most", "very", "only", "both", "such",
+    "been", "being", "than", "then", "now", "here", "there", "well",
+    "too", "own", "same", "other", "new", "old", "good", "bad", "best",
+    "big", "few", "last", "next", "back", "even", "still", "way", "down",
+    "day", "time", "year", "work", "world", "life", "high", "low",
+    "buy", "sell", "hold", "long", "short", "put", "call", "get", "set",
+    "show", "tell", "give", "take", "make", "let", "run", "try", "use",
+    "look", "find", "know", "think", "want", "need", "like", "should",
+    "could", "would", "stock", "price", "trade", "market", "share",
+    "analyze", "check", "please", "help", "thanks", "hi",
+    "hey", "hello", "whats", "hows", "out", "s", "im", "ive",
+})
+
+
+def _extract_tickers(text: str) -> list[str]:
+    """Extract plausible ticker symbols from user input.
+
+    Filters out common English words and keeps only 1-5 char
+    alphabetic tokens that look like real ticker symbols.
+    """
+    tokens = []
+    for word in text.split():
+        # Strip common punctuation
+        clean = word.strip(".,!?;:'\"-()[]{}")
+        if not clean or not clean.isalpha():
+            continue
+        upper = clean.upper()
+        if len(upper) > 5:
+            continue
+        if upper.lower() in _COMMON_WORDS:
+            continue
+        tokens.append(upper)
+    # Deduplicate while preserving order
+    seen = set()
+    result = []
+    for t in tokens:
+        if t not in seen:
+            seen.add(t)
+            result.append(t)
+    return result
+
 # ── Spinner Verbs ─────────────────────────────────────────
 THINKING_VERBS = [
     "Analyzing", "Evaluating", "Researching", "Computing",
@@ -823,7 +873,7 @@ class NovaTraderCLI:
             return False
 
         if command == "/analyze" and len(parts) > 1:
-            tickers = [t.upper() for t in parts[1:] if t.isalpha()]
+            tickers = _extract_tickers(" ".join(parts[1:]))
             if tickers:
                 ticker_str = " ".join(tickers)
                 console.print(f"  [{ASH}]Analyzing:[/{ASH}] [bold {TEAL}]{ticker_str}[/bold {TEAL}]")
@@ -855,7 +905,7 @@ class NovaTraderCLI:
                         break
                     continue
 
-                tickers = [t.upper() for t in user_input.split() if t.isalpha()]
+                tickers = _extract_tickers(user_input)
                 if not tickers:
                     console.print(f"  [{ASH}]Enter ticker symbols (e.g. AAPL NVDA TSLA) or /help[/{ASH}]")
                     console.print()
