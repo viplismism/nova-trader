@@ -38,7 +38,8 @@ from src.agents.portfolio_manager import portfolio_management_agent
 from src.agents.risk_manager import risk_management_agent
 from src.graph.state import AgentState
 from src.utils.analysts import ANALYST_ORDER, ANALYST_CONFIG, get_analyst_nodes
-from src.orchestrator.pipeline import Pipeline
+from src.core.engine import HydraEngine
+from src.core.pad import AgentPad
 from src.utils.progress import progress
 
 load_dotenv()
@@ -88,6 +89,8 @@ BANNER_LINES = [
 # ── Slash Commands ────────────────────────────────────────
 SLASH_COMMANDS = [
     ("/analyze", "AAPL ...", "Analyze tickers with all agents"),
+    ("/pad", "", "Show last AgentPad summary"),
+    ("/execute", "", "Execute last decisions (paper)"),
     ("/model", "", "Switch LLM provider and model"),
     ("/reasoning", "", "Toggle reasoning display"),
     ("/cash", "<amount>", "Set portfolio cash"),
@@ -134,6 +137,7 @@ class NovaTraderCLI:
         self.session = PromptSession(history=self.history)
         self.agent_events: list[dict] = []
         self._spinner_active = False
+        self.last_pad: AgentPad | None = None
 
     # ── Splash Screen ─────────────────────────────────────
 
@@ -489,7 +493,7 @@ class NovaTraderCLI:
         analyst_nodes = get_analyst_nodes()
         analysts = [(key, analyst_nodes[key][1]) for key in analyst_nodes]
 
-        pipeline = Pipeline(
+        engine = HydraEngine(
             analyst_agents=analysts,
             risk_agent=risk_management_agent,
             portfolio_agent=portfolio_management_agent,
@@ -497,13 +501,13 @@ class NovaTraderCLI:
 
         handler = progress.register_handler(self._on_agent_update)
 
-        result = {"decisions": None, "analyst_signals": {}}
+        result = {"decisions": None, "analyst_signals": {}, "pad": None}
         error_msg = None
 
         def _run():
             nonlocal result, error_msg
             try:
-                final_state = pipeline.run(state)
+                final_state, pad = engine.run(state)
                 content = final_state["messages"][-1].content
                 try:
                     decisions = json.loads(content)
@@ -512,6 +516,7 @@ class NovaTraderCLI:
                 result = {
                     "decisions": decisions,
                     "analyst_signals": final_state["data"].get("analyst_signals", {}),
+                    "pad": pad,
                 }
             except KeyboardInterrupt:
                 error_msg = "Interrupted by user"
@@ -558,6 +563,12 @@ class NovaTraderCLI:
 
         console.print(f"  [{ASH}]completed in {elapsed:.1f}s[/{ASH}]")
         console.print()
+
+        # Store the pad for later /pad and /execute commands
+        pad = result.get("pad")
+        if pad:
+            self.last_pad = pad
+            self._render_consensus(pad, tickers)
 
         self._render_decisions(result, tickers)
 
@@ -628,6 +639,136 @@ class NovaTraderCLI:
                 ))
                 console.print()
 
+    def _render_consensus(self, pad: AgentPad, tickers: list[str]):
+        """Render consensus view from the AgentPad."""
+        if not pad.consensus:
+            return
+
+        console.print(f"  {SYM_DIAMOND} Consensus", style=f"bold {TEAL}")
+        console.print()
+
+        for ticker in tickers:
+            cons = pad.get_consensus(ticker)
+            if not cons:
+                continue
+
+            signal = cons.get("signal", "neutral").upper()
+            conf = cons.get("confidence", 0)
+            conf_norm = conf / 100 if conf > 1 else conf
+            bull = cons.get("bull_count", 0)
+            bear = cons.get("bear_count", 0)
+            neutral = cons.get("neutral_count", 0)
+            total = cons.get("total_agents", 0)
+
+            if signal == "BULLISH":
+                sig_color = SAGE
+            elif signal == "BEARISH":
+                sig_color = ROSE
+            else:
+                sig_color = AMBER
+
+            conf_bar = "█" * int(conf_norm * 10) + "░" * (10 - int(conf_norm * 10))
+
+            console.print(f"    {ticker:<8}", style=f"bold {TEAL}", end="")
+            console.print(f"{signal:<10}", style=f"bold {sig_color}", end="")
+            console.print(f"{conf_bar} {conf_norm:.0%}", style=sig_color, end="")
+            console.print(f"   [{ASH}]{bull}↑ {bear}↓ {neutral}— ({total} agents)[/{ASH}]")
+
+        console.print()
+
+    def show_pad(self):
+        """Display the last AgentPad content."""
+        if not self.last_pad:
+            console.print(f"  {SYM_WARN} No analysis pad yet. Run /analyze first.", style=f"bold {AMBER}")
+            console.print()
+            return
+
+        pad = self.last_pad
+        console.print(f"  {SYM_DIAMOND} AgentPad  [{ASH}]session {pad.session_id}[/{ASH}]", style=f"bold {TEAL}")
+        console.print()
+
+        # Consensus
+        if pad.consensus:
+            console.print(f"    {'Consensus':<16}", style=f"bold {TEAL}")
+            for ticker, cons in pad.consensus.items():
+                signal = cons.get("signal", "neutral").upper()
+                conf = cons.get("confidence", 0)
+                bull = cons.get("bull_count", 0)
+                bear = cons.get("bear_count", 0)
+                console.print(f"      {ticker:<8} {signal:<10} conf={conf}%  {bull}↑ {bear}↓", style=STONE)
+            console.print()
+
+        # Decisions
+        if pad.decisions:
+            console.print(f"    {'Decisions':<16}", style=f"bold {TEAL}")
+            for ticker, dec in pad.decisions.items():
+                action = dec.get("action", "hold").upper()
+                qty = dec.get("quantity", 0)
+                console.print(f"      {ticker:<8} {action:<8} {qty} shares", style=STONE)
+            console.print()
+
+        # Agent timings
+        if pad.agent_timings:
+            console.print(f"    {'Timings':<16}", style=f"bold {TEAL}")
+            sorted_timings = sorted(pad.agent_timings.items(), key=lambda x: x[1], reverse=True)
+            for agent, secs in sorted_timings[:10]:
+                name = agent.replace("_agent", "").replace("_", " ").title()
+                console.print(f"      {name:<26} {secs:.1f}s", style=ASH)
+            console.print()
+
+        # Orders
+        if pad.orders:
+            console.print(f"    {'Orders':<16}", style=f"bold {TEAL}")
+            for order in pad.orders:
+                console.print(f"      {order.get('ticker'):<8} {order.get('side'):<5} "
+                              f"{order.get('quantity')} shares  [{order.get('status')}]", style=STONE)
+            console.print()
+
+    def execute_last(self):
+        """Execute the last analysis decisions via paper trading."""
+        if not self.last_pad or not self.last_pad.decisions:
+            console.print(f"  {SYM_WARN} No decisions to execute. Run /analyze first.", style=f"bold {AMBER}")
+            console.print()
+            return
+
+        console.print(f"  {SYM_DIAMOND} Executing via paper trading...", style=f"bold {TEAL}")
+        console.print()
+
+        try:
+            from src.execution.bridge import ExecutionBridge
+            bridge = ExecutionBridge.paper()
+            result = bridge.execute(self.last_pad.decisions)
+
+            for order in result.orders:
+                status_color = SAGE if order.status not in ("failed", "rejected") else ROSE
+                console.print(f"    {order.ticker:<8} {order.side:<5} {order.quantity} shares  "
+                              f"[{order.status}]", style=status_color)
+                # Record in pad
+                self.last_pad.write_order({
+                    "ticker": order.ticker,
+                    "side": order.side,
+                    "quantity": order.quantity,
+                    "status": order.status,
+                    "order_id": order.order_id,
+                })
+
+            if result.errors:
+                for err in result.errors:
+                    console.print(f"    {SYM_CROSS} {err}", style=f"bold {ROSE}")
+
+            console.print()
+            console.print(f"  [{ASH}]{result.success_count} succeeded, "
+                          f"{result.failed_count} failed[/{ASH}]")
+
+        except ImportError:
+            console.print(f"  {SYM_CROSS} alpaca-py not installed. Run: pip install alpaca-py", style=f"bold {ROSE}")
+        except ValueError as e:
+            console.print(f"  {SYM_CROSS} {e}", style=f"bold {ROSE}")
+        except Exception as e:
+            console.print(f"  {SYM_CROSS} Execution error: {e}", style=f"bold {ROSE}")
+
+        console.print()
+
     # ── Command Handler ───────────────────────────────────
 
     def handle_command(self, cmd: str) -> bool:
@@ -671,6 +812,14 @@ class NovaTraderCLI:
 
         if command == "/status":
             self.show_status()
+            return False
+
+        if command == "/pad":
+            self.show_pad()
+            return False
+
+        if command == "/execute":
+            self.execute_last()
             return False
 
         if command == "/analyze" and len(parts) > 1:
