@@ -1,18 +1,19 @@
-"""Nova Trader — Interactive CLI (dexter-style).
+"""Nova Trader — Interactive CLI.
 
-A rich terminal UI with:
-  - ASCII banner + model display
-  - Chat-style interaction (type tickers, get analysis)
-  - Real-time agent progress (⏺ agent → ⎿ result)
+Feynman-inspired terminal UI with:
+  - Block-char ASCII banner
+  - Two-column splash: system info + slash commands
+  - Warm earth-tone palette (ink/stone/sage/teal/rose)
+  - Agent progress events (check on done, dot while running)
   - Animated spinner during processing
-  - Markdown-rendered output
-  - /commands for model selection, help, etc.
+  - Rich decision rendering with confidence bars
 """
 
 import os
 import sys
 import json
 import time
+import platform
 import threading
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
@@ -36,7 +37,7 @@ from langchain_core.messages import HumanMessage
 from src.agents.portfolio_manager import portfolio_management_agent
 from src.agents.risk_manager import risk_management_agent
 from src.graph.state import AgentState
-from src.utils.analysts import ANALYST_ORDER, get_analyst_nodes
+from src.utils.analysts import ANALYST_ORDER, ANALYST_CONFIG, get_analyst_nodes
 from src.orchestrator.pipeline import Pipeline
 from src.utils.progress import progress
 
@@ -44,13 +45,27 @@ load_dotenv()
 
 console = Console()
 
-# ── Theme Colors ──────────────────────────────────────────
-PRIMARY = "bold dodger_blue2"
-SUCCESS = "bold green"
-ERROR = "bold red"
-WARNING = "bold yellow"
-MUTED = "dim"
-ACCENT = "bold cyan"
+# ── Version ───────────────────────────────────────────────
+VERSION = "0.1.0"
+
+# ── Theme: warm earth tones (Feynman-inspired) ────────────
+INK = "grey85"              # primary text, warm beige
+STONE = "grey62"            # muted text
+ASH = "grey50"              # body text, dim
+DARK_ASH = "grey35"         # borders
+SAGE = "#a7c080"            # muted green — success, accents
+TEAL = "#7fbbb3"            # teal — headers, highlights
+ROSE = "#e67e80"            # soft red — errors
+AMBER = "#dbbc7f"           # warm amber — warnings
+
+# ── Symbols ───────────────────────────────────────────────
+SYM_CHECK = "✓"
+SYM_CROSS = "✗"
+SYM_WARN = "⚠"
+SYM_DIAMOND = "◆"
+SYM_DOT = "⏺"
+SYM_RESULT = "⎿"
+SYM_PROMPT = "❯"
 
 # ── Spinner Verbs ─────────────────────────────────────────
 THINKING_VERBS = [
@@ -60,15 +75,51 @@ THINKING_VERBS = [
     "Scoring metrics", "Checking fundamentals", "Reading filings",
 ]
 
-BANNER = r"""
-[dodger_blue2]
- ███╗   ██╗ ██████╗ ██╗   ██╗ █████╗    ████████╗██████╗  █████╗ ██████╗ ███████╗██████╗
- ████╗  ██║██╔═══██╗██║   ██║██╔══██╗   ╚══██╔══╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗
- ██╔██╗ ██║██║   ██║██║   ██║███████║      ██║   ██████╔╝███████║██║  ██║█████╗  ██████╔╝
- ██║╚██╗██║██║   ██║╚██╗ ██╔╝██╔══██║      ██║   ██╔══██╗██╔══██║██║  ██║██╔══╝  ██╔══██╗
- ██║ ╚████║╚██████╔╝ ╚████╔╝ ██║  ██║      ██║   ██║  ██║██║  ██║██████╔╝███████╗██║  ██║
- ╚═╝  ╚═══╝ ╚═════╝   ╚═══╝  ╚═╝  ╚═╝      ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝
-[/dodger_blue2]"""
+# ── ASCII Banner (just "NOVA" — compact, iconic) ─────────
+BANNER_LINES = [
+    " ███╗   ██╗  ██████╗  ██╗   ██╗  █████╗ ",
+    " ████╗  ██║ ██╔═══██╗ ██║   ██║ ██╔══██╗",
+    " ██╔██╗ ██║ ██║   ██║ ██║   ██║ ███████║",
+    " ██║╚██╗██║ ██║   ██║ ╚██╗ ██╔╝ ██╔══██║",
+    " ██║ ╚████║ ╚██████╔╝  ╚████╔╝  ██║  ██║",
+    " ╚═╝  ╚═══╝  ╚═════╝    ╚═══╝   ╚═╝  ╚═╝",
+]
+
+# ── Slash Commands ────────────────────────────────────────
+SLASH_COMMANDS = [
+    ("/analyze", "AAPL ...", "Analyze tickers with all agents"),
+    ("/model", "", "Switch LLM provider and model"),
+    ("/reasoning", "", "Toggle reasoning display"),
+    ("/cash", "<amount>", "Set portfolio cash"),
+    ("/agents", "", "List all analyst agents"),
+    ("/status", "", "Show system status"),
+    ("/help", "", "Show help"),
+]
+
+
+def _get_system_info():
+    """Gather system info for splash screen."""
+    cores = os.cpu_count() or "?"
+    mem_gb = "?"
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["sysctl", "-n", "hw.memsize"],
+            capture_output=True, text=True, timeout=2
+        )
+        if result.returncode == 0:
+            mem_gb = f"{int(result.stdout.strip()) // (1024**3)}GB"
+    except Exception:
+        pass
+    arch = platform.machine()
+    return cores, mem_gb, arch
+
+
+# Quant agent keys (non-template Python agents)
+_QUANT_KEYS = frozenset([
+    "technical_analyst", "fundamentals_analyst", "growth_analyst",
+    "news_sentiment_analyst", "sentiment_analyst", "valuation_analyst",
+])
 
 
 class NovaTraderCLI:
@@ -84,30 +135,196 @@ class NovaTraderCLI:
         self.agent_events: list[dict] = []
         self._spinner_active = False
 
-    # ── Display ───────────────────────────────────────────
+    # ── Splash Screen ─────────────────────────────────────
 
     def show_banner(self):
-        """Show the intro banner with model info."""
-        console.print(BANNER)
-        console.print(
-            f"  [dim]Model:[/dim] [bold]{self.model_provider}[/bold] / "
-            f"[cyan]{self.model_name}[/cyan]  "
-            f"[dim]│  Type [bold white]/help[/bold white] for commands  │  "
-            f"[bold white]/model[/bold white] to change model[/dim]\n"
-        )
+        """Render full splash: banner + version + two-column info box."""
+        console.print()
+        for line in BANNER_LINES:
+            console.print(f"  {line}", style=f"bold {TEAL}")
+        console.print()
+
+        # Version line centered under banner
+        banner_w = max(len(l) for l in BANNER_LINES) + 4
+        ver = f"v{VERSION}"
+        pad_l = (banner_w - len(ver) - 2) // 2
+        pad_r = banner_w - len(ver) - 2 - pad_l
+        console.print(f"  {'─' * pad_l} {ver} {'─' * pad_r}", style=DARK_ASH)
+
+        self._render_splash_box()
+        console.print()
+
+    def _render_splash_box(self):
+        """Render Feynman-style two-column bordered info box."""
+        cores, mem_gb, arch = _get_system_info()
+
+        # Count agents
+        persona_count = sum(1 for k in ANALYST_CONFIG if k not in _QUANT_KEYS)
+        total_agents = persona_count + len(_QUANT_KEYS) + 2
+
+        # Persona last names
+        persona_names = [
+            v["display_name"].split()[-1]
+            for k, v in sorted(ANALYST_CONFIG.items(), key=lambda x: x[1]["order"])
+            if k not in _QUANT_KEYS
+        ]
+
+        # Dimensions — adapt to terminal width (min 110 for two-column layout)
+        term_w = min(max(console.width or 110, 110), 130)
+        inner = term_w - 6  # 6 = "  │ " + " │"
+        LW = inner * 46 // 100
+        RW = inner - LW - 3  # 3 = " │ " separator
+        hbar = "─" * (inner + 2)
+
+        # Left column: list of (label, value) or None=blank or ("_h", text)=header
+        left = []
+        left.append(("model", f"{self.model_provider}/{self.model_name}"))
+        left.append(("cash", f"${self.initial_cash:,.0f}"))
+        left.append(("reasoning", "on" if self.show_reasoning else "off"))
+        left.append(None)
+        left.append(("system", f"{cores} cores · {mem_gb} · {arch}"))
+        left.append(None)
+        left.append(("_h", f"{total_agents} agents"))
+        # Wrap persona names into rows
+        pn = ", ".join(persona_names)
+        chunk_w = LW - 14
+        first_persona = True
+        while pn:
+            cut = pn[:chunk_w]
+            if len(pn) > chunk_w:
+                lc = cut.rfind(",")
+                if lc > 0:
+                    cut = pn[:lc + 1]
+            lbl = "  personas" if first_persona else ""
+            left.append((lbl, cut.strip()))
+            pn = pn[len(cut):].strip().lstrip(",").strip()
+            first_persona = False
+        left.append(("  quant", "Technical, Fundamentals, Growth,"))
+        left.append(("", "Sentiment, News, Valuation"))
+        left.append(("  orch.", "Risk Manager, Portfolio Manager"))
+
+        # Right column
+        right = []
+        right.append(("_h", "Commands"))
+        for cmd, args, desc in SLASH_COMMANDS:
+            usage = f"{cmd} {args}".strip() if args else cmd
+            right.append(("cmd", usage, desc))
+        right.append(None)
+        right.append(("_n", "Type tickers directly: AAPL TSLA NVDA"))
+
+        # Pad height
+        mx = max(len(left), len(right))
+        left += [None] * (mx - len(left))
+        right += [None] * (mx - len(right))
+
+        console.print(Text.assemble((f"  ┌{hbar}┐", DARK_ASH)))
+
+        for i in range(mx):
+            ll, rl = left[i], right[i]
+
+            # Left cell
+            lt = Text()
+            if ll is None:
+                lt.append(" " * LW)
+            elif ll[0] == "_h":
+                lt.append(ll[1], style=f"bold {TEAL}")
+                lt.append(" " * max(0, LW - len(ll[1])))
+            else:
+                lbl, val = ll
+                label_w = 14
+                lt.append(f"{lbl:<{label_w}}", style=STONE)
+                lt.append(val, style=INK)
+                lt.append(" " * max(0, LW - label_w - len(val)))
+
+            # Right cell
+            rt = Text()
+            if rl is None:
+                rt.append(" " * RW)
+            elif rl[0] == "_h":
+                rt.append(rl[1], style=f"bold {TEAL}")
+                rt.append(" " * max(0, RW - len(rl[1])))
+            elif rl[0] == "cmd":
+                _, usage, desc = rl
+                cmd_w = min(22, RW // 2)
+                rt.append(f"{usage:<{cmd_w}}", style=f"bold {SAGE}")
+                rem = RW - cmd_w
+                d = desc[:rem]
+                rt.append(d, style=ASH)
+                rt.append(" " * max(0, rem - len(d)))
+            elif rl[0] == "_n":
+                note = rl[1][:RW]
+                rt.append(note, style=f"italic {ASH}")
+                rt.append(" " * max(0, RW - len(note)))
+            else:
+                rt.append(" " * RW)
+
+            row = Text()
+            row.append("  │ ", style=DARK_ASH)
+            row.append_text(lt)
+            row.append(" │ ", style=DARK_ASH)
+            row.append_text(rt)
+            row.append(" │", style=DARK_ASH)
+            console.print(row)
+
+        console.print(Text.assemble((f"  └{hbar}┘", DARK_ASH)))
+
+    # ── Help ──────────────────────────────────────────────
 
     def show_help(self):
-        """Show available commands."""
-        help_table = Table(box=box.SIMPLE, show_header=False, padding=(0, 2))
-        help_table.add_column("Command", style="bold cyan", min_width=20)
-        help_table.add_column("Description", style="dim")
-        help_table.add_row("/help", "Show this help")
-        help_table.add_row("/model", "Change LLM provider and model")
-        help_table.add_row("/reasoning", "Toggle show reasoning on/off")
-        help_table.add_row("/cash <amount>", "Set initial cash (default: 100,000)")
-        help_table.add_row("AAPL NVDA TSLA", "Analyze one or more tickers")
-        help_table.add_row("exit / quit / q", "Exit Nova Trader")
-        console.print(Panel(help_table, title="[bold]Commands[/bold]", border_style="blue"))
+        """Show commands in Feynman style."""
+        console.print()
+        console.print(f"  {SYM_DIAMOND} Commands", style=f"bold {TEAL}")
+        for cmd, args, desc in SLASH_COMMANDS:
+            usage = f"{cmd} {args}".strip() if args else cmd
+            console.print(f"    {usage:<24}", style=f"bold {SAGE}", end="")
+            console.print(desc, style=ASH)
+        console.print(f"    {'exit / quit / q':<24}", style=f"bold {SAGE}", end="")
+        console.print("Exit Nova Trader", style=ASH)
+        console.print()
+
+    def show_agents(self):
+        """List all available analyst agents."""
+        console.print()
+        console.print(f"  {SYM_DIAMOND} Investor Personas", style=f"bold {TEAL}")
+        for key, config in sorted(ANALYST_CONFIG.items(), key=lambda x: x[1]["order"]):
+            if key in _QUANT_KEYS:
+                continue
+            console.print(f"    {config['display_name']:<24}", style=f"bold {SAGE}", end="")
+            console.print(config.get("description", ""), style=ASH)
+        console.print()
+        console.print(f"  {SYM_DIAMOND} Quantitative Agents", style=f"bold {TEAL}")
+        for key in sorted(_QUANT_KEYS):
+            config = ANALYST_CONFIG.get(key, {})
+            if config:
+                console.print(f"    {config['display_name']:<24}", style=f"bold {SAGE}", end="")
+                console.print(config.get("description", ""), style=ASH)
+        console.print()
+        console.print(f"  {SYM_DIAMOND} Orchestration", style=f"bold {TEAL}")
+        console.print(f"    {'Risk Manager':<24}", style=f"bold {SAGE}", end="")
+        console.print("Volatility-adjusted position sizing and risk limits", style=ASH)
+        console.print(f"    {'Portfolio Manager':<24}", style=f"bold {SAGE}", end="")
+        console.print("Final trading decisions via LLM consensus", style=ASH)
+        console.print()
+
+    def show_status(self):
+        """Show system status panel."""
+        cores, mem_gb, arch = _get_system_info()
+        console.print()
+        console.print(f"  {SYM_DIAMOND} Configuration", style=f"bold {TEAL}")
+        console.print(f"    {'Model:':<16}{self.model_provider}/{self.model_name}", style=INK)
+        console.print(f"    {'Cash:':<16}${self.initial_cash:,.0f}", style=INK)
+        console.print(f"    {'Reasoning:':<16}{'on' if self.show_reasoning else 'off'}", style=INK)
+        console.print()
+        console.print(f"  {SYM_DIAMOND} System", style=f"bold {TEAL}")
+        console.print(f"    {'Platform:':<16}{platform.system()} {arch}", style=INK)
+        console.print(f"    {'Cores:':<16}{cores}", style=INK)
+        console.print(f"    {'Memory:':<16}{mem_gb}", style=INK)
+        console.print(f"    {'Python:':<16}{platform.python_version()}", style=INK)
+        console.print()
+        console.print(f"  {SYM_DIAMOND} Agents", style=f"bold {TEAL}")
+        total = len(ANALYST_CONFIG) + 2
+        console.print(f"    {'Total:':<16}{total} ({len(ANALYST_CONFIG)} analysts + 2 orchestration)", style=INK)
+        console.print()
 
     def show_model_selector(self):
         """Interactive model selection."""
@@ -121,27 +338,30 @@ class NovaTraderCLI:
             ("xai", "xAI (Grok)"),
             ("openrouter", "OpenRouter (any model)"),
         ]
-        console.print("\n[bold]Select a provider:[/bold]")
+        console.print()
+        console.print(f"  {SYM_DIAMOND} Select Provider", style=f"bold {TEAL}")
         for i, (prov, desc) in enumerate(providers, 1):
-            marker = " [cyan]◉[/cyan]" if prov == self.model_provider else " [dim]○[/dim]"
-            console.print(f"  {marker} [bold]{i}[/bold]. {prov} [dim]— {desc}[/dim]")
+            if prov == self.model_provider:
+                console.print(f"    [{SAGE}]◉ {i}. {prov}[/{SAGE}]  ", end="")
+            else:
+                console.print(f"    [{STONE}]○ {i}. {prov}[/{STONE}]  ", end="")
+            console.print(desc, style=ASH)
 
         try:
             choice = self.session.prompt(
-                HTML("<b><skyblue>  provider> </skyblue></b>")
+                HTML("<style fg='#a7c080'><b>  provider❯ </b></style>")
             ).strip()
             if choice.isdigit() and 1 <= int(choice) <= len(providers):
                 self.model_provider = providers[int(choice) - 1][0]
             elif choice in [p[0] for p in providers]:
                 self.model_provider = choice
             else:
-                console.print("[dim]  Cancelled.[/dim]")
+                console.print(f"  [{ASH}]Cancelled.[/{ASH}]")
                 return
         except (KeyboardInterrupt, EOFError):
-            console.print("[dim]  Cancelled.[/dim]")
+            console.print(f"  [{ASH}]Cancelled.[/{ASH}]")
             return
 
-        # Model name
         default_models = {
             "ollama": "llama3.1:8b",
             "groq": "llama-3.3-70b-versatile",
@@ -155,16 +375,14 @@ class NovaTraderCLI:
         default = default_models.get(self.model_provider, "")
         try:
             model = self.session.prompt(
-                HTML(f"<b><skyblue>  model name</skyblue></b> <i>[{default}]</i><b><skyblue>> </skyblue></b>")
+                HTML(f"<style fg='#a7c080'><b>  model</b></style> <i>[{default}]</i><style fg='#a7c080'><b>❯ </b></style>")
             ).strip()
             self.model_name = model if model else default
         except (KeyboardInterrupt, EOFError):
             self.model_name = default
 
-        console.print(
-            f"\n  [dim]Using:[/dim] [bold]{self.model_provider}[/bold] / "
-            f"[cyan]{self.model_name}[/cyan]\n"
-        )
+        console.print(f"\n  {SYM_CHECK} Using {self.model_provider}/{self.model_name}", style=f"bold {SAGE}")
+        console.print()
 
     # ── Agent Progress Rendering ──────────────────────────
 
@@ -178,44 +396,43 @@ class NovaTraderCLI:
             detail = event.get("detail", "")
 
             if status == "running":
-                output.append("  ⏺ ", style="bold dodger_blue2")
-                output.append(f"{name}", style="bold")
+                output.append(f"  {SYM_DOT} ", style=f"bold {TEAL}")
+                output.append(name, style=f"bold {INK}")
                 if ticker:
-                    output.append(f"({ticker})", style="cyan")
+                    output.append(f" ({ticker})", style=STONE)
                 output.append("\n")
             elif status == "done":
-                output.append("  ⏺ ", style="bold green")
-                output.append(f"{name}", style="bold")
+                output.append(f"  {SYM_CHECK} ", style=f"bold {SAGE}")
+                output.append(name, style=INK)
                 if ticker:
-                    output.append(f"({ticker})", style="cyan")
+                    output.append(f" ({ticker})", style=STONE)
                 output.append("\n")
                 if detail:
-                    output.append(f"    ⎿  {detail}\n", style="dim")
+                    output.append(f"    {SYM_RESULT}  {detail}\n", style=ASH)
             elif status == "error":
-                output.append("  ⏺ ", style="bold red")
-                output.append(f"{name}", style="bold")
+                output.append(f"  {SYM_CROSS} ", style=f"bold {ROSE}")
+                output.append(name, style=f"bold {INK}")
                 output.append("\n")
-                output.append(f"    ⎿  Error: {detail}\n", style="red")
+                output.append(f"    {SYM_RESULT}  Error: {detail}\n", style=ROSE)
         return output
 
     def _render_spinner(self, verb: str, elapsed: float) -> Text:
-        """Render an animated spinner line."""
+        """Render an animated braille spinner line."""
         frames = ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"]
         frame = frames[int(elapsed * 8) % len(frames)]
         t = Text()
-        t.append(f"\n  {frame} ", style="bold dodger_blue2")
-        t.append(f"{verb}...", style="dim italic")
-        t.append(" (esc to interrupt)", style="dim")
+        t.append(f"\n  {frame} ", style=f"bold {TEAL}")
+        t.append(f"{verb}...", style=f"italic {ASH}")
         return t
 
     # ── Core Analysis ─────────────────────────────────────
 
-    def _on_agent_update(self, agent_name: str, ticker: Optional[str], status: str, analysis: Optional[str] = None, timestamp: Optional[str] = None):
+    def _on_agent_update(self, agent_name: str, ticker: Optional[str], status: str,
+                         analysis: Optional[str] = None, timestamp: Optional[str] = None):
         """Callback for agent progress updates."""
         display_name = agent_name.replace("_agent", "").replace("_", " ").title()
         is_done = status.lower() == "done"
 
-        # Update existing event
         for event in self.agent_events:
             if event["name"] == display_name and event.get("ticker") == ticker:
                 if is_done:
@@ -241,7 +458,6 @@ class NovaTraderCLI:
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - relativedelta(months=3)).strftime("%Y-%m-%d")
 
-        # Build portfolio
         portfolio = {
             "cash": self.initial_cash,
             "margin_requirement": 0.0,
@@ -279,7 +495,6 @@ class NovaTraderCLI:
             portfolio_agent=portfolio_management_agent,
         )
 
-        # Register progress handler
         handler = progress.register_handler(self._on_agent_update)
 
         result = {"decisions": None, "analyst_signals": {}}
@@ -303,19 +518,15 @@ class NovaTraderCLI:
             except Exception as e:
                 error_msg = str(e)
 
-        # Run pipeline in background thread
         thread = threading.Thread(target=_run, daemon=True)
-
-        import random
         verb_idx = 0
 
-        console.print()  # blank line before output
+        console.print()
 
         with Live(console=console, refresh_per_second=8, transient=True) as live:
             thread.start()
             while thread.is_alive():
                 elapsed = time.time() - start_time
-                # Rotate verb every 3 seconds
                 verb_idx = int(elapsed / 3) % len(THINKING_VERBS)
                 verb = THINKING_VERBS[verb_idx]
 
@@ -333,31 +544,29 @@ class NovaTraderCLI:
             thread.join(timeout=2)
 
         progress.unregister_handler(handler)
-
         elapsed = time.time() - start_time
 
         if error_msg:
-            console.print(f"\n  [bold red]✗[/bold red] {error_msg}\n")
+            console.print(f"\n  {SYM_CROSS} {error_msg}", style=f"bold {ROSE}")
+            console.print()
             return
 
-        # Show final agent events (completed)
+        # Show final completed events
         for event in self.agent_events:
             event["status"] = "done"
         console.print(self._render_agent_events())
 
-        # Performance line
-        console.print(
-            f"  [dim]✻ {elapsed:.1f}s[/dim]\n"
-        )
+        console.print(f"  [{ASH}]completed in {elapsed:.1f}s[/{ASH}]")
+        console.print()
 
-        # Render decisions
         self._render_decisions(result, tickers)
 
     def _render_decisions(self, result: dict, tickers: list[str]):
-        """Render trading decisions in a rich format."""
+        """Render trading decisions."""
         decisions = result.get("decisions")
         if not decisions:
-            console.print("  [bold red]No trading decisions returned.[/bold red]\n")
+            console.print(f"  {SYM_CROSS} No trading decisions returned.", style=f"bold {ROSE}")
+            console.print()
             return
 
         for ticker in tickers:
@@ -368,26 +577,23 @@ class NovaTraderCLI:
             action = decision.get("action", "hold").upper()
             quantity = decision.get("quantity", 0)
             confidence_raw = decision.get("confidence", 0)
-            # Normalize: portfolio manager returns 0-100 int
             confidence = confidence_raw / 100 if confidence_raw > 1 else confidence_raw
             reasoning = decision.get("reasoning", "")
 
-            # Color the action
-            action_style = {
-                "BUY": "bold green",
-                "STRONG_BUY": "bold green",
-                "SELL": "bold red",
-                "STRONG_SELL": "bold red",
-                "SHORT": "bold red",
-                "COVER": "bold green",
-                "HOLD": "bold yellow",
-            }.get(action, "bold white")
+            if action in ("BUY", "STRONG_BUY", "COVER"):
+                action_color = SAGE
+            elif action in ("SELL", "STRONG_SELL", "SHORT"):
+                action_color = ROSE
+            else:
+                action_color = AMBER
 
-            # Build signal summary table
-            signals_table = Table(box=box.SIMPLE_HEAVY, show_header=True, padding=(0, 1))
-            signals_table.add_column("Agent", style="bold", min_width=22)
-            signals_table.add_column("Signal", justify="center", min_width=10)
-            signals_table.add_column("Confidence", justify="center", min_width=12)
+            console.print(f"  {SYM_DIAMOND} {ticker}", style=f"bold {TEAL}", end="")
+            console.print("  →  ", style=ASH, end="")
+            console.print(action, style=f"bold {action_color}", end="")
+            if quantity:
+                console.print(f" {quantity} shares", style=STONE, end="")
+            console.print(f"  ({confidence:.0%})", style=ASH)
+            console.print()
 
             analyst_signals = result.get("analyst_signals", {})
             for agent_key, agent_signals in analyst_signals.items():
@@ -395,56 +601,45 @@ class NovaTraderCLI:
                     continue
                 if agent_key == "risk_management_agent":
                     continue
-
                 sig = agent_signals[ticker]
                 agent_name = agent_key.replace("_agent", "").replace("_", " ").title()
                 signal = sig.get("signal", "").upper()
                 conf_raw = sig.get("confidence", 0)
-                # Normalize: agents return 0-100 int, display needs 0.0-1.0
                 conf = conf_raw / 100 if conf_raw > 1 else conf_raw
-
-                sig_style = {"BULLISH": "green", "BEARISH": "red", "NEUTRAL": "yellow"}.get(signal, "white")
+                if signal == "BULLISH":
+                    sig_color = SAGE
+                elif signal == "BEARISH":
+                    sig_color = ROSE
+                else:
+                    sig_color = AMBER
                 conf_bar = "█" * int(conf * 10) + "░" * (10 - int(conf * 10))
-                signals_table.add_row(
-                    agent_name,
-                    f"[{sig_style}]{signal}[/{sig_style}]",
-                    f"[{sig_style}]{conf_bar}[/{sig_style}] {conf:.0%}",
-                )
+                console.print(f"    {agent_name:<26}", style=STONE, end="")
+                console.print(f"{signal:<10}", style=f"bold {sig_color}", end="")
+                console.print(f"{conf_bar} {conf:.0%}", style=sig_color)
 
-            # Decision header
-            header = Text()
-            header.append(f"  ⏺ ", style="bold dodger_blue2")
-            header.append(f"{ticker}", style="bold cyan")
-            header.append(f"  →  ", style="dim")
-            header.append(f"{action}", style=action_style)
-            if quantity:
-                header.append(f" {quantity} shares", style="dim")
-            header.append(f"  ({confidence:.0%} confidence)", style="dim")
-            console.print(header)
+            console.print()
 
-            # Signals table
-            console.print(signals_table)
-
-            # Reasoning
             if reasoning and self.show_reasoning:
                 console.print(Panel(
                     Markdown(reasoning),
-                    title=f"[dim]Reasoning[/dim]",
-                    border_style="dim",
+                    title="[dim]Reasoning[/dim]",
+                    border_style=DARK_ASH,
                     padding=(1, 2),
                 ))
-            console.print()
+                console.print()
 
     # ── Command Handler ───────────────────────────────────
 
     def handle_command(self, cmd: str) -> bool:
-        """Handle slash commands. Returns True if handled."""
+        """Handle slash commands. Returns True if should exit."""
         parts = cmd.strip().split()
         command = parts[0].lower()
 
         if command in ("exit", "quit", "q"):
-            console.print("\n  [dim]Goodbye.[/dim]\n")
-            return True  # Signal exit
+            console.print()
+            console.print(f"  [{ASH}]Goodbye.[/{ASH}]")
+            console.print()
+            return True
 
         if command == "/help":
             self.show_help()
@@ -456,18 +651,38 @@ class NovaTraderCLI:
 
         if command == "/reasoning":
             self.show_reasoning = not self.show_reasoning
-            state = "[green]on[/green]" if self.show_reasoning else "[red]off[/red]"
-            console.print(f"  [dim]Show reasoning:[/dim] {state}\n")
+            label = f"[{SAGE}]on[/{SAGE}]" if self.show_reasoning else f"[{ROSE}]off[/{ROSE}]"
+            console.print(f"  {SYM_CHECK} Show reasoning: {label}", style=f"bold {SAGE}")
+            console.print()
             return False
 
         if command == "/cash" and len(parts) > 1:
             try:
                 self.initial_cash = float(parts[1].replace(",", "").replace("$", ""))
-                console.print(f"  [dim]Cash set to:[/dim] [bold]${self.initial_cash:,.0f}[/bold]\n")
+                console.print(f"  {SYM_CHECK} Cash set to ${self.initial_cash:,.0f}", style=f"bold {SAGE}")
             except ValueError:
-                console.print("  [red]Invalid amount.[/red]\n")
+                console.print(f"  {SYM_CROSS} Invalid amount.", style=f"bold {ROSE}")
+            console.print()
             return False
 
+        if command == "/agents":
+            self.show_agents()
+            return False
+
+        if command == "/status":
+            self.show_status()
+            return False
+
+        if command == "/analyze" and len(parts) > 1:
+            tickers = [t.upper() for t in parts[1:] if t.isalpha()]
+            if tickers:
+                ticker_str = " ".join(tickers)
+                console.print(f"  [{ASH}]Analyzing:[/{ASH}] [bold {TEAL}]{ticker_str}[/bold {TEAL}]")
+                self.run_analysis(tickers)
+            return False
+
+        console.print(f"  {SYM_WARN} Unknown command: {command}", style=f"bold {AMBER}")
+        console.print()
         return False
 
     # ── Main Loop ─────────────────────────────────────────
@@ -479,37 +694,36 @@ class NovaTraderCLI:
         while True:
             try:
                 user_input = self.session.prompt(
-                    HTML("<b><skyblue>❯ </skyblue></b>"),
+                    HTML("<style fg='#a7c080'><b>❯ </b></style>"),
                 ).strip()
 
                 if not user_input:
                     continue
 
-                # Commands
                 if user_input.startswith("/") or user_input.lower() in ("exit", "quit", "q"):
                     should_exit = self.handle_command(user_input)
                     if should_exit:
                         break
                     continue
 
-                # Treat input as tickers
                 tickers = [t.upper() for t in user_input.split() if t.isalpha()]
                 if not tickers:
-                    console.print("  [dim]Enter ticker symbols (e.g. AAPL NVDA TSLA)[/dim]\n")
+                    console.print(f"  [{ASH}]Enter ticker symbols (e.g. AAPL NVDA TSLA) or /help[/{ASH}]")
+                    console.print()
                     continue
 
-                console.print(
-                    f"  [dim]Analyzing:[/dim] [bold cyan]{' '.join(tickers)}[/bold cyan]\n"
-                )
+                ticker_str = " ".join(tickers)
+                console.print(f"  [{ASH}]Analyzing:[/{ASH}] [bold {TEAL}]{ticker_str}[/bold {TEAL}]")
                 self.run_analysis(tickers)
 
             except KeyboardInterrupt:
-                console.print("\n  [dim]Press Ctrl+C again or type 'exit' to quit.[/dim]\n")
+                console.print(f"\n  [{ASH}]Press Ctrl+C again or type 'exit' to quit.[/{ASH}]")
+                console.print()
                 continue
             except EOFError:
                 break
 
-        console.print("[dim]Session ended.[/dim]")
+        console.print(f"  [{ASH}]Session ended.[/{ASH}]")
 
 
 def main():

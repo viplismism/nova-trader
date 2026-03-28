@@ -19,6 +19,7 @@ env/
 *.swp
 *.swo
 *~
+*.bak
 
 # Environment
 .env
