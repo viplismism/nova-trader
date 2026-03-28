@@ -210,21 +210,27 @@ class NovaTraderCLI:
 
     # ── Core Analysis ─────────────────────────────────────
 
-    def _on_agent_update(self, agent_name: str, ticker: Optional[str], status: str):
+    def _on_agent_update(self, agent_name: str, ticker: Optional[str], status: str, analysis: Optional[str] = None, timestamp: Optional[str] = None):
         """Callback for agent progress updates."""
         display_name = agent_name.replace("_agent", "").replace("_", " ").title()
+        is_done = status.lower() == "done"
 
-        # Update or append event
+        # Update existing event
         for event in self.agent_events:
             if event["name"] == display_name and event.get("ticker") == ticker:
-                event["status"] = "done" if status == "done" else event["status"]
+                if is_done:
+                    event["status"] = "done"
+                    if analysis:
+                        event["detail"] = analysis[:80]
+                else:
+                    event["detail"] = status
                 return
 
         self.agent_events.append({
             "name": display_name,
             "ticker": ticker,
-            "status": "running",
-            "detail": "",
+            "status": "done" if is_done else "running",
+            "detail": (analysis[:80] if analysis else "") if is_done else status,
         })
 
     def run_analysis(self, tickers: list[str]):
