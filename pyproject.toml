@@ -41,6 +41,7 @@ tabulate = "^0.9.0"
 colorama = "^0.4.6"
 questionary = "^2.1.0"
 rich = "^13.9.4"
+prompt_toolkit = "^3.0.0"
 
 # Date handling
 python-dateutil = "^2.8.0"
@@ -70,5 +71,6 @@ profile = "black"
 force_alphabetical_sort_within_sections = true
 
 [tool.poetry.scripts]
+nova = "src.cli.app:main"
 trade = "src.main:main"
 backtester = "src.backtesting.cli:main"
