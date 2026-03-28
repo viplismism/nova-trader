@@ -113,7 +113,8 @@ OLLAMA_LLM_ORDER = [model.to_choice_tuple() for model in OLLAMA_MODELS]
 def get_model_info(model_name: str, model_provider: str) -> LLMModel | None:
     """Get model information by model_name"""
     all_models = AVAILABLE_MODELS + OLLAMA_MODELS
-    return next((model for model in all_models if model.model_name == model_name and model.provider == model_provider), None)
+    provider_lower = model_provider.lower() if isinstance(model_provider, str) else model_provider.value.lower() if hasattr(model_provider, 'value') else str(model_provider).lower()
+    return next((model for model in all_models if model.model_name == model_name and model.provider.value.lower() == provider_lower), None)
 
 
 def find_model_by_name(model_name: str) -> LLMModel | None:
@@ -134,7 +135,12 @@ def get_models_list():
     ]
 
 
-def get_model(model_name: str, model_provider: ModelProvider, api_keys: dict = None) -> ChatOpenAI | ChatGroq | ChatOllama | GigaChat | None:
+def get_model(model_name: str, model_provider: ModelProvider | str, api_keys: dict = None) -> ChatOpenAI | ChatGroq | ChatOllama | GigaChat | None:
+    # Normalize provider to ModelProvider enum
+    if isinstance(model_provider, str):
+        _provider_map = {p.value.lower(): p for p in ModelProvider}
+        model_provider = _provider_map.get(model_provider.lower(), model_provider)
+
     if model_provider == ModelProvider.GROQ:
         api_key = (api_keys or {}).get("GROQ_API_KEY") or os.getenv("GROQ_API_KEY")
         if not api_key:

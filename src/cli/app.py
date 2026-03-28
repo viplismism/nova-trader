@@ -367,7 +367,9 @@ class NovaTraderCLI:
 
             action = decision.get("action", "hold").upper()
             quantity = decision.get("quantity", 0)
-            confidence = decision.get("confidence", 0)
+            confidence_raw = decision.get("confidence", 0)
+            # Normalize: portfolio manager returns 0-100 int
+            confidence = confidence_raw / 100 if confidence_raw > 1 else confidence_raw
             reasoning = decision.get("reasoning", "")
 
             # Color the action
@@ -397,7 +399,9 @@ class NovaTraderCLI:
                 sig = agent_signals[ticker]
                 agent_name = agent_key.replace("_agent", "").replace("_", " ").title()
                 signal = sig.get("signal", "").upper()
-                conf = sig.get("confidence", 0)
+                conf_raw = sig.get("confidence", 0)
+                # Normalize: agents return 0-100 int, display needs 0.0-1.0
+                conf = conf_raw / 100 if conf_raw > 1 else conf_raw
 
                 sig_style = {"BULLISH": "green", "BEARISH": "red", "NEUTRAL": "yellow"}.get(signal, "white")
                 conf_bar = "█" * int(conf * 10) + "░" * (10 - int(conf * 10))
