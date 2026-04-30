@@ -81,7 +81,7 @@ def signal_to_orders(decisions: dict, broker: BrokerBase) -> list[Order]:
         quantity = decision.get("quantity", 0)
         reasoning = decision.get("reasoning", "")
 
-        if action == "hold" or quantity == 0:
+        if action == "hold" or quantity <= 0:
             continue
 
         # Map agent actions to broker sides

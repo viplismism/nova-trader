@@ -1,3 +1,9 @@
+"""Unit tests for simulated trade execution.
+
+These checks make sure the trade executor routes normalized actions to the right
+portfolio methods and safely handles unsupported or no-op instructions.
+"""
+
 from src.backtesting.trader import TradeExecutor
 
 
@@ -24,4 +30,3 @@ def test_trade_executor_guards_and_unknown_action(portfolio):
     assert ex.execute_trade("AAPL", "buy", 0, 10.0, portfolio) == 0
     assert ex.execute_trade("AAPL", "buy", -5, 10.0, portfolio) == 0
     assert ex.execute_trade("AAPL", "unknown", 10, 10.0, portfolio) == 0
-

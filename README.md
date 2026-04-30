@@ -1,157 +1,79 @@
 # Nova Trader
 
-Multi-agent AI trading system combining deep financial research with autonomous signal generation and paper trading execution.
+Minimal trading research, backtesting, and execution system.
 
-## Architecture
+The current runtime is a small core plus a CLI:
 
+```text
+CLI -> TradingService -> TradingPipeline -> signals -> risk -> portfolio decision -> optional execution
 ```
-Analysts (parallel) → Risk Manager → Portfolio Manager → Execution
+
+## Runtime Layout
+
+```text
+src/
+  cli/
+    app.py                  # argparse CLI with analyze/backtest commands
+  core/
+    config.py               # core configuration
+    models.py               # portfolio, analysis, and backtest result models
+    signals.py              # normalized signal payload helpers
+    pipeline.py             # analysis pipeline
+    service.py              # analysis, execution, and backtest facade
+  data/                     # market data access, cache, memory, models
+  alpha/features/           # factor, fundamentals, sentiment, technical scoring
+  portfolio/                # deterministic vote-based portfolio construction
+  risk/                     # position limit and volatility/correlation controls
+  execution/                # execution bridge, broker adapters, audit, safety checks
+  backtesting/              # portfolio simulation, costs, valuation, metrics
 ```
 
-20 specialized analyst agents run in parallel, each producing buy/sell/hold signals with confidence scores. The risk manager validates exposure limits. The portfolio manager aggregates signals and makes final decisions. The execution layer sends orders to Alpaca paper trading.
+## CLI
 
-### How It Works
-
-1. **Analyst agents** analyze a stock from different perspectives — value investing, growth, technicals, sentiment, macro, etc.
-2. **12 investor-persona agents** are defined as YAML configs + Jinja2 prompt templates (no boilerplate Python per agent).
-3. **6 quantitative agents** run pure calculation — technical indicators, fundamentals, growth metrics, sentiment, news, valuation.
-4. **Risk Manager** checks volatility, correlation, and exposure limits.
-5. **Portfolio Manager** aggregates all signals and produces final trade decisions.
-6. **Execution** (optional) sends orders to Alpaca paper trading.
-
-## Quick Start
+Install dependencies with Poetry, then run either the script entrypoint or the module:
 
 ```bash
-# Install dependencies
 poetry install
 
-# Configure API keys
-cp .env.example .env
-# Edit .env with your keys
+poetry run nova analyze AAPL MSFT NVDA
+poetry run nova analyze AAPL --months-back 6 --mode paper --execute
 
-# Run the trading system
-poetry run python -m src.main --ticker AAPL NVDA TSLA
+poetry run nova backtest AAPL MSFT --start-date 2024-01-01 --end-date 2024-12-31
 
-# Run backtester
-poetry run backtester --ticker AAPL --start-date 2024-01-01 --end-date 2024-12-31
+poetry run python -m src.cli analyze AAPL
 ```
 
-## Agents
+### Commands
 
-### Investor Personas (YAML-configured)
+- `analyze`: scores tickers, applies risk limits, builds deterministic actions, and can optionally execute them.
+- `backtest`: reruns the same analysis flow on a business-day loop and reports equity curve and summary metrics.
 
-Each persona is a YAML file defining philosophy, scoring functions, weights, and thresholds. Adding a new persona takes ~60 lines of YAML — zero Python.
+### Key Flags
 
-| Agent | Style | Focus |
-|---|---|---|
-| Warren Buffett | Value | Moat analysis, intrinsic value, margin of safety |
-| Charlie Munger | Quality | Business quality, management, mental models |
-| Ben Graham | Deep Value | Net-net, Graham number, margin of safety |
-| Bill Ackman | Activist | Catalyst identification, undervalued with triggers |
-| Cathie Wood | Growth | Disruptive innovation, TAM analysis |
-| Michael Burry | Contrarian | Short opportunities, overvaluation detection |
-| Peter Lynch | GARP | PEG ratio, business simplicity |
-| Phil Fisher | Scuttlebutt | Management quality, growth potential |
-| Stanley Druckenmiller | Macro | Macro trends, currency/commodity plays |
-| Rakesh Jhunjhunwala | Emerging Markets | Growth sectors, macro-driven investing |
-| Mohnish Pabrai | Dhandho | Low-risk, high-uncertainty value plays |
-| Aswath Damodaran | Valuation | DCF, cost of capital, narrative + numbers |
+- `--start-date`, `--end-date`: explicit analysis or backtest window.
+- `--months-back`: lookback window used when analysis start date is omitted, and per rebalance in backtests.
+- `--cash`: starting cash / portfolio cash.
+- `--mode dry_run|paper`: execution mode for analysis runs.
+- `--execute`: submit decisions through the execution bridge.
+- `--json`: print machine-readable output.
 
-### Quantitative Agents (Python)
+## Core Flow
 
-| Agent | Type | What It Computes |
-|---|---|---|
-| Technical Analyst | Quant | Trend (EMA), momentum, mean reversion (Bollinger/RSI), volatility, stat-arb (Hurst) |
-| Fundamentals Analyst | Quant | Financial ratios, earnings quality, profitability |
-| Growth Analyst | Quant | Revenue/earnings growth trends |
-| Sentiment Analyst | Behavioral | Insider trades pattern analysis |
-| News Sentiment | NLP | LLM-powered headline classification |
-| Valuation Analyst | Quant | DCF, comparable analysis |
+1. `src/core/pipeline.py` loads price history from `src/data`.
+2. Signal models in `src/alpha/features` score each ticker.
+3. `src/risk` computes per-ticker headroom from volatility, correlation, exposure, cash, and drawdown inputs.
+4. `src/portfolio/construction.py` converts usable signals into deterministic `buy`, `sell`, `short`, `cover`, or `hold` decisions.
+5. `src/execution` can simulate orders or send paper orders through Alpaca.
+6. `src/core/service.py` exposes the same logic to the CLI and to the built-in backtest loop.
 
-### Orchestration Agents
+## Notes
 
-| Agent | Role |
-|---|---|
-| **Risk Manager** | Volatility sizing, correlation analysis, exposure limits |
-| **Portfolio Manager** | Aggregates all signals, makes final buy/sell/hold decisions |
+- The current CLI entrypoint is `src/cli/app.py`.
+- The public core surface is exported from `src/core/__init__.py`.
+- `nova`, `trade`, and `backtester` all point to the same CLI entrypoint in `pyproject.toml`.
 
-## Adding a New Investor Persona
+## Docs
 
-Create a YAML file in `src/agents/templates/configs/`:
-
-```yaml
-id: "new_agent"
-display_name: "New Agent"
-persona:
-  name: "New Agent"
-  philosophy: "Describe their investment philosophy..."
-  focus_metrics: ["metric_1", "metric_2"]
-  signal_rules: "When to be bullish vs bearish..."
-prompt_template: "default.j2"
-data:
-  period: "ttm"
-  limit: 10
-  line_items: ["revenue", "net_income"]
-scoring:
-  - function: "score_roic"
-    params: { thresholds: [8, 12, 18] }
-  - function: "score_roe"
-    params: { thresholds: [10, 15, 22] }
-weights:
-  score_roic: 0.5
-  score_roe: 0.5
-thresholds:
-  bullish: 0.6
-  bearish: 0.4
-```
-
-That's it. The agent is automatically discovered and runs alongside all others.
-
-## Project Structure
-
-```
-nova-trader/
-├── pyproject.toml
-├── src/
-│   ├── main.py                     # CLI entry point
-│   ├── orchestrator/
-│   │   └── pipeline.py             # Parallel orchestration (ThreadPoolExecutor)
-│   ├── execution/
-│   │   ├── base.py                 # Abstract broker interface
-│   │   └── alpaca.py               # Alpaca paper trading
-│   ├── agents/
-│   │   ├── harness.py              # Template agent engine
-│   │   ├── scoring.py              # 16 composable scoring functions
-│   │   ├── loader.py               # YAML config auto-discovery
-│   │   ├── templates/
-│   │   │   ├── configs/            # 12 investor persona YAMLs
-│   │   │   └── prompts/            # Jinja2 prompt templates
-│   │   ├── technicals.py           # Technical analysis (5 strategies)
-│   │   ├── fundamentals.py         # Fundamentals analysis
-│   │   ├── growth_agent.py         # Growth metrics
-│   │   ├── sentiment.py            # Insider trade sentiment
-│   │   ├── news_sentiment.py       # News headline analysis
-│   │   ├── valuation.py            # DCF / comparables
-│   │   ├── risk_manager.py         # Risk controls
-│   │   └── portfolio_manager.py    # Final decision maker
-│   ├── tools/                      # Financial data API
-│   ├── data/                       # Models, cache
-│   ├── llm/                        # Multi-provider LLM abstraction
-│   ├── backtesting/                # Backtest engine
-│   └── utils/                      # Display, progress, helpers
-└── tests/
-```
-
-## LLM Providers
-
-Nova Trader supports multiple LLM providers out of the box:
-
-- OpenAI (GPT-4o, GPT-4o-mini)
-- Anthropic (Claude Sonnet, Haiku)
-- Google (Gemini)
-- Groq (Llama, Mixtral)
-- DeepSeek
-- Ollama (local models)
-- OpenRouter (any model)
-
-Configure via `--model-provider` and `--model-name` CLI flags.
+- [ARCHITECTURE.md](/Users/vipul.m/Nova/Projects/active/ai-traders/nova-trader/ARCHITECTURE.md): current runtime shape
+- [TECH_SPEC.md](/Users/vipul.m/Nova/Projects/active/ai-traders/nova-trader/TECH_SPEC.md): module boundaries, flows, and current known gaps
+- [GLOSSARY.md](/Users/vipul.m/Nova/Projects/active/ai-traders/nova-trader/GLOSSARY.md): repo terms and trading vocabulary used by the codebase

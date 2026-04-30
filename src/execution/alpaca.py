@@ -11,12 +11,20 @@ Setup:
 
 import os
 from src.execution.base import BrokerBase, Order, Position, AccountSummary
+from src.utils.logger import get_logger
+
+log = get_logger(__name__)
+
+# Timeout for Alpaca API calls (seconds)
+_API_TIMEOUT = 30
 
 
 class AlpacaBroker(BrokerBase):
     """Alpaca paper trading broker.
 
     Wraps alpaca-py SDK for paper trading execution.
+    All API calls are wrapped with error handling so network failures
+    produce clear error messages rather than raw stack traces.
     """
 
     def __init__(self):
@@ -32,7 +40,6 @@ class AlpacaBroker(BrokerBase):
 
         api_key = os.environ.get("ALPACA_API_KEY")
         secret_key = os.environ.get("ALPACA_SECRET_KEY")
-        base_url = os.environ.get("ALPACA_BASE_URL", "https://paper-api.alpaca.markets")
 
         if not api_key or not secret_key:
             raise ValueError(
@@ -40,12 +47,18 @@ class AlpacaBroker(BrokerBase):
                 "Get free paper trading keys at https://alpaca.markets"
             )
 
-        self._client = TradingClient(api_key, secret_key, paper=True, url_override=base_url)
+        # paper=True tells the SDK to use paper-api.alpaca.markets automatically
+        self._client = TradingClient(api_key, secret_key, paper=True)
         self._OrderSide = OrderSide
         self._TimeInForce = TimeInForce
         self._MarketOrderRequest = MarketOrderRequest
 
     def place_order(self, ticker: str, side: str, quantity: int, order_type: str = "market") -> Order:
+        if quantity <= 0:
+            raise ValueError(f"Invalid quantity {quantity} for {ticker}: must be positive")
+        if side not in ("buy", "sell"):
+            raise ValueError(f"Invalid side '{side}': must be 'buy' or 'sell'")
+
         order_side = self._OrderSide.BUY if side == "buy" else self._OrderSide.SELL
 
         request = self._MarketOrderRequest(
@@ -55,7 +68,12 @@ class AlpacaBroker(BrokerBase):
             time_in_force=self._TimeInForce.DAY,
         )
 
-        result = self._client.submit_order(request)
+        try:
+            result = self._client.submit_order(request)
+        except Exception as e:
+            log.error("Alpaca order submission failed for %s: %s", ticker, e, ticker=ticker)
+            raise RuntimeError(f"Alpaca API error placing {side} {quantity} {ticker}: {e}") from e
+
         return Order(
             ticker=ticker,
             side=side,
@@ -66,7 +84,12 @@ class AlpacaBroker(BrokerBase):
         )
 
     def get_positions(self) -> list[Position]:
-        positions = self._client.get_all_positions()
+        try:
+            positions = self._client.get_all_positions()
+        except Exception as e:
+            log.error("Alpaca get_positions failed: %s", e)
+            raise RuntimeError(f"Alpaca API error fetching positions: {e}") from e
+
         return [
             Position(
                 ticker=p.symbol,
@@ -80,7 +103,12 @@ class AlpacaBroker(BrokerBase):
         ]
 
     def get_account(self) -> AccountSummary:
-        account = self._client.get_account()
+        try:
+            account = self._client.get_account()
+        except Exception as e:
+            log.error("Alpaca get_account failed: %s", e)
+            raise RuntimeError(f"Alpaca API error fetching account: {e}") from e
+
         return AccountSummary(
             equity=float(account.equity),
             cash=float(account.cash),
@@ -88,9 +116,43 @@ class AlpacaBroker(BrokerBase):
             positions=self.get_positions(),
         )
 
+    def cancel_all_orders(self) -> int:
+        """Cancel all open orders. Returns count of cancelled orders."""
+        try:
+            statuses = self._client.cancel_orders()
+            return len(statuses) if statuses else 0
+        except Exception as e:
+            log.warning("Alpaca cancel_all_orders failed: %s", e)
+            return 0
+
+    def close_all_positions(self) -> list[dict]:
+        """Cancel all orders, then close all open positions."""
+        # Step 1: Cancel all pending orders first
+        cancelled = self.cancel_all_orders()
+        if cancelled:
+            log.info("Cancelled %d pending orders before closing positions", cancelled)
+            import time
+            time.sleep(1)  # Give Alpaca a moment to process cancellations
+
+        # Step 2: Close all positions
+        try:
+            responses = self._client.close_all_positions(cancel_orders=False)
+            closed = []
+            for resp in responses:
+                order = resp.body if hasattr(resp, 'body') else resp
+                symbol = getattr(order, 'symbol', '?')
+                qty = getattr(order, 'qty', 0)
+                side = getattr(order, 'side', '?')
+                closed.append({"ticker": symbol, "qty": str(qty), "side": str(side)})
+            return closed
+        except Exception as e:
+            log.error("Alpaca close_all_positions failed: %s", e)
+            raise RuntimeError(f"Alpaca API error closing positions: {e}") from e
+
     def cancel_order(self, order_id: str) -> bool:
         try:
             self._client.cancel_order_by_id(order_id)
             return True
-        except Exception:
+        except Exception as e:
+            log.warning("Alpaca cancel_order failed for %s: %s", order_id, e)
             return False

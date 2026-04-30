@@ -26,6 +26,7 @@ env/
 
 # Poetry
 poetry.lock
+uv.lock
 
 # OS
 .DS_Store

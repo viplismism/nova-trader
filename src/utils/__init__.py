@@ -1,3 +1,1 @@
-# This file can be empty
-
-"""Utility modules for the application."""
+"""Small shared utilities used by the current runtime."""

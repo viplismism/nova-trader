@@ -1,4 +1,16 @@
-from src.core.pad import AgentPad
-from src.core.engine import HydraEngine
+"""Public package surface for the rebuilt core."""
 
-__all__ = ["AgentPad", "HydraEngine"]
+from src.core.config import CoreConfig
+from src.core.models import AnalysisResult, BacktestResult, PortfolioState, TickerReport
+from src.core.pipeline import TradingPipeline
+from src.core.service import TradingService
+
+__all__ = [
+    "AnalysisResult",
+    "BacktestResult",
+    "CoreConfig",
+    "PortfolioState",
+    "TickerReport",
+    "TradingPipeline",
+    "TradingService",
+]

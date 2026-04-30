@@ -1,3 +1,10 @@
+"""Performance metric calculations for backtests.
+
+The calculator in this module derives the compact performance numbers used by
+the project, including Sharpe ratio, Sortino ratio, and max drawdown from the
+portfolio value series generated during simulation.
+"""
+
 from __future__ import annotations
 
 from typing import Sequence
@@ -11,13 +18,6 @@ class PerformanceMetricsCalculator:
     def __init__(self, *, annual_trading_days: int = 252, annual_rf_rate: float = 0.0434) -> None:
         self.annual_trading_days = annual_trading_days
         self.annual_rf_rate = annual_rf_rate
-
-    def update_metrics(self, metrics: PerformanceMetrics, values: Sequence[PortfolioValuePoint]) -> None:
-        """Deprecated: mutate provided dict. Kept for backward compatibility."""
-        computed = self.compute_metrics(values)
-        if not computed:
-            return
-        metrics.update(computed)  # type: ignore[arg-type]
 
     def compute_metrics(self, values: Sequence[PortfolioValuePoint]) -> PerformanceMetrics:
         import pandas as pd
@@ -73,5 +73,3 @@ class PerformanceMetricsCalculator:
             "max_drawdown": max_drawdown,
             "max_drawdown_date": max_drawdown_date,
         }
-
-

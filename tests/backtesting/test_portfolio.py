@@ -1,3 +1,10 @@
+"""Unit tests for backtest portfolio accounting.
+
+These tests exercise long and short position updates, partial fills, clamping,
+cost basis tracking, and realized gains so the portfolio model behaves
+predictably under common trading actions.
+"""
+
 import math
 
 import pytest
@@ -138,5 +145,4 @@ def test_zero_or_negative_quantity_is_noop(portfolio: Portfolio, action: str) ->
     after = portfolio.get_snapshot()
     assert executed == 0 and executed2 == 0
     assert after == before
-
 

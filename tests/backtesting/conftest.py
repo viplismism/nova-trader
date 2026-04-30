@@ -1,3 +1,10 @@
+"""Shared fixtures for backtesting unit tests.
+
+This file provides small reusable portfolio, price, and DataFrame fixtures so
+the backtesting tests stay concise and focus on behavior rather than repeated
+setup code.
+"""
+
 import pytest
 
 from src.backtesting.portfolio import Portfolio
@@ -22,5 +29,4 @@ def price_df_factory():
         return pd.DataFrame({"close": closes})
 
     return _factory
-
 

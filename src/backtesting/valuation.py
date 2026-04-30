@@ -1,3 +1,10 @@
+"""Portfolio valuation and exposure helpers for backtests.
+
+These functions convert raw portfolio positions plus current prices into total
+equity, gross and net exposure, and the compact summary numbers printed during
+or after a simulation run.
+"""
+
 from __future__ import annotations
 
 from typing import Dict, Mapping, Mapping as _MappingAny
@@ -60,7 +67,7 @@ def compute_portfolio_summary(
 ) -> Dict[str, float | None]:
     """Compute portfolio summary fields in a pure, testable function.
 
-    Returns a dict with keys matching the arguments used by format_backtest_row
+    Returns a compact dict used by summary output and tests.
     for the summary row (excluding is_summary and date-specific fields).
     """
     cash_balance = portfolio.get_cash()
@@ -79,4 +86,3 @@ def compute_portfolio_summary(
         "sortino_ratio": performance_metrics.get("sortino_ratio"),
         "max_drawdown": performance_metrics.get("max_drawdown"),
     }
-

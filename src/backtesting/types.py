@@ -1,10 +1,15 @@
+"""Shared types for the backtesting subsystem.
+
+This module collects the enums, typed dictionaries, and aliases used by the lean
+backtesting stack so portfolio accounting, simulated trading, valuation, and
+metrics share one explicit data shape.
+"""
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Mapping, Optional, Sequence, TypedDict, Literal
+from typing import Dict, Optional, TypedDict, Literal
 from enum import Enum
-
-import pandas as pd
 
 
 class Action(str, Enum):
@@ -49,28 +54,6 @@ class PortfolioSnapshot(TypedDict):
     realized_gains: Dict[str, TickerRealizedGains]
 
 
-# DataFrame alias for clarity in interfaces
-PriceDataFrame = pd.DataFrame
-
-
-class AgentDecision(TypedDict):
-    action: ActionLiteral
-    quantity: float
-
-
-AgentDecisions = Dict[str, AgentDecision]
-
-
-# Analyst signal payloads can vary by agent; keep as loose dicts
-AnalystSignal = Dict[str, Any]
-AgentSignals = Dict[str, Dict[str, AnalystSignal]]
-
-
-class AgentOutput(TypedDict):
-    decisions: AgentDecisions
-    analyst_signals: AgentSignals
-
-
 # Use functional style to allow keys with spaces to mirror current code
 PortfolioValuePoint = TypedDict(
     "PortfolioValuePoint",
@@ -101,5 +84,3 @@ class PerformanceMetrics(TypedDict, total=False):
     long_short_ratio: Optional[float]
     gross_exposure: Optional[float]
     net_exposure: Optional[float]
-
-
