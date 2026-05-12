@@ -1,14 +1,97 @@
 # Nova Trader
 
-Multi-agent AI trading system combining deep financial research with autonomous signal generation and paper trading execution.
+Multi-agent AI trading recommendation system for hedge-fund style research, signal generation, portfolio decision support, and optional paper trading execution.
 
 ## Architecture
 
-```
-Analysts (parallel) → Risk Manager → Portfolio Manager → Execution
+Nova Trader is being shaped as a hedge-fund recommendation engine. The core product loop is: understand the user query, gather the right evidence, run specialized analyst agents, apply risk and portfolio constraints, and return a structured recommendation.
+
+```mermaid
+flowchart TB
+    subgraph USER["USER LAYER"]
+        CLI["CLI / Interactive Terminal"]
+        API["Future API / Dashboard"]
+        REVIEW["Golden Query Review"]
+    end
+
+    subgraph GATEWAY["RECOMMENDATION GATEWAY"]
+        ROUTER["Query Router<br/>BERT / SLM later"]
+        STATE["Query + Run State"]
+        SELECTOR["Workflow Selector"]
+        CONTRACT["Recommendation Contract"]
+    end
+
+    subgraph AGENTS["EXECUTION LAYER: AGENT FLEET"]
+        PERSONA["Investor Persona Agents"]
+        QUANT["Quantitative Agents"]
+        RISK["Risk Manager"]
+        PORTFOLIO["Portfolio Manager"]
+        BACKTEST["Backtesting Engine"]
+    end
+
+    subgraph DATA["INTEGRATION LAYER: DATA + EVIDENCE"]
+        MARKET["Market Data APIs"]
+        FUNDAMENTALS["Fundamentals / Valuation Data"]
+        NEWS["News / Sentiment / Insider Data"]
+        PORTCTX["Portfolio Context"]
+        EVIDENCE["Evidence Store"]
+    end
+
+    subgraph EVAL["EVALUATION + OBSERVABILITY"]
+        LOGS["Query Logs"]
+        GOLDEN["Golden Query Dataset"]
+        SCORECARDS["Recommendation Scorecards"]
+        TRACES["Agent Traces"]
+    end
+
+    OUTPUT["Structured Recommendation<br/>Action | Confidence | Evidence | Risks | Sizing | Explanation"]
+
+    CLI --> ROUTER
+    API --> ROUTER
+    REVIEW --> GOLDEN
+
+    ROUTER --> STATE --> SELECTOR
+    SELECTOR --> PERSONA
+    SELECTOR --> QUANT
+    SELECTOR --> BACKTEST
+
+    PERSONA --> MARKET
+    PERSONA --> FUNDAMENTALS
+    PERSONA --> NEWS
+    QUANT --> MARKET
+    QUANT --> FUNDAMENTALS
+    RISK --> PORTCTX
+    PORTFOLIO --> PORTCTX
+
+    MARKET --> EVIDENCE
+    FUNDAMENTALS --> EVIDENCE
+    NEWS --> EVIDENCE
+    PORTCTX --> EVIDENCE
+
+    EVIDENCE --> PERSONA
+    EVIDENCE --> QUANT
+    PERSONA --> RISK
+    QUANT --> RISK
+    RISK --> PORTFOLIO
+    PORTFOLIO --> CONTRACT
+    BACKTEST --> CONTRACT
+    CONTRACT --> OUTPUT
+    OUTPUT --> CLI
+    OUTPUT --> API
+
+    STATE --> LOGS
+    CONTRACT --> LOGS
+    LOGS --> SCORECARDS
+    GOLDEN --> SCORECARDS
+    PERSONA --> TRACES
+    QUANT --> TRACES
+    RISK --> TRACES
+    PORTFOLIO --> TRACES
 ```
 
-20 specialized analyst agents run in parallel, each producing buy/sell/hold signals with confidence scores. The risk manager validates exposure limits. The portfolio manager aggregates signals and makes final decisions. The execution layer sends orders to Alpaca paper trading.
+20 specialized analyst agents run in parallel, each producing buy/sell/hold signals with confidence scores. The risk manager validates exposure limits. The portfolio manager aggregates signals and produces recommended actions. The execution layer can optionally send orders to Alpaca paper trading.
+
+See [docs/v0_architecture.md](docs/v0_architecture.md) for the V0 architecture and [docs/three_month_scope.md](docs/three_month_scope.md) for the current product scope.
 
 ### How It Works
 
@@ -16,7 +99,7 @@ Analysts (parallel) → Risk Manager → Portfolio Manager → Execution
 2. **12 investor-persona agents** are defined as YAML configs + Jinja2 prompt templates (no boilerplate Python per agent).
 3. **6 quantitative agents** run pure calculation — technical indicators, fundamentals, growth metrics, sentiment, news, valuation.
 4. **Risk Manager** checks volatility, correlation, and exposure limits.
-5. **Portfolio Manager** aggregates all signals and produces final trade decisions.
+5. **Portfolio Manager** aggregates all signals and produces recommended trade decisions.
 6. **Execution** (optional) sends orders to Alpaca paper trading.
 
 ## Quick Start
@@ -29,11 +112,11 @@ poetry install
 cp .env.example .env
 # Edit .env with your keys
 
-# Run the trading system
-poetry run python -m src.main --ticker AAPL NVDA TSLA
+# Run the recommendation system
+poetry run python -m src.main --tickers AAPL,NVDA,TSLA
 
 # Run backtester
-poetry run backtester --ticker AAPL --start-date 2024-01-01 --end-date 2024-12-31
+poetry run backtester --tickers AAPL --start-date 2024-01-01 --end-date 2024-12-31
 ```
 
 ## Agents
@@ -137,8 +220,11 @@ nova-trader/
 │   ├── tools/                      # Financial data API
 │   ├── data/                       # Models, cache
 │   ├── llm/                        # Multi-provider LLM abstraction
+│   ├── router/                     # Query routing contracts
+│   ├── recommender/                # Recommendation output contracts
 │   ├── backtesting/                # Backtest engine
 │   └── utils/                      # Display, progress, helpers
+├── docs/                           # Architecture and planning docs
 └── tests/
 ```
 

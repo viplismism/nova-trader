@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "nova-trader"
 version = "0.1.0"
-description = "Multi-agent AI trading system — research, signals, and execution"
+description = "Multi-agent AI trading recommendation system — research, signals, risk, and portfolio decision support"
 authors = []
 readme = "README.md"
 packages = [
@@ -48,7 +48,7 @@ python-dateutil = "^2.8.0"
 
 # Future: uncomment as you integrate
 # alpaca-py = "^0.35.0"
-yfinance = "^1.2.0"
+yfinance = ">=0.2,<1.0"
 # praw = "^7.7.1"
 
 [tool.poetry.group.dev.dependencies]

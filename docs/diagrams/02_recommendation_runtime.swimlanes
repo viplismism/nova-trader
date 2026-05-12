@@ -1,0 +1,26 @@
+title: Nova Trader - Recommendation Runtime
+
+order: App, Context, Research Agents, Risk & Portfolio, Answer
+
+App -> Context: Build run context
+Context -> Context: Assets, dates, portfolio, model, selected analysts
+
+Context -> Research Agents: Start analyst run
+Research Agents -> Research Agents: Fetch prices, fundamentals, news, sentiment
+Research Agents -> Research Agents: Run persona and quantitative analysis
+Research Agents -> Context: Analyst opinions
+
+Context -> Risk & Portfolio: Send signals and portfolio state
+Risk & Portfolio -> Risk & Portfolio: Check exposure, sizing, and constraints
+Risk & Portfolio -> Risk & Portfolio: Aggregate signals into a portfolio decision
+
+Risk & Portfolio -> Answer: Create recommendation
+Answer -> App: Render final response
+
+-: Recommendation Contents
+
+note App, Answer:
+Output includes:
+action, confidence, conviction,
+evidence, risks, sizing,
+and what would change the view.
