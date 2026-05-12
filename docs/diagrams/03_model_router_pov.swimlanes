@@ -1,0 +1,24 @@
+title: Nova Trader - Router And Workflow POV
+
+order: User Query, Router Model, Route Contract, Workflow, Response
+
+User Query -> Router Model: Natural language request
+Router Model -> Route Contract: Intent, assets, horizon, data needs
+
+Route Contract -> Workflow: Select product workflow
+
+if: Single-stock recommendation
+  Workflow -> Response: Buy, sell, hold, short, or avoid
+else: Portfolio or risk review
+  Workflow -> Response: Exposure, sizing, and risk review
+else: Backtest request
+  Workflow -> Response: Historical performance report
+else: News, sentiment, or valuation
+  Workflow -> Response: Focused research answer
+end
+
+Response -> User Query: Structured answer and explanation
+
+note User Query, Response:
+Router is model-backed.
+No deterministic rule router.
