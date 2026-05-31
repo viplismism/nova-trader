@@ -195,6 +195,12 @@ def _status_color(value: str) -> str:
     return AMBER
 
 
+def _field_value(obj: object, name: str, default=None):
+    if isinstance(obj, dict):
+        return obj.get(name, default)
+    return getattr(obj, name, default)
+
+
 def _render_recommendation(console: Console, recommendation: Recommendation) -> None:
     console.print()
     console.print(
@@ -214,17 +220,20 @@ def _render_recommendation(console: Console, recommendation: Recommendation) -> 
     table.add_column("Decision", style=INK, overflow="fold")
 
     for ticker in recommendation.tickers:
-        consensus = recommendation.consensus.per_ticker.get(ticker)
+        consensus = recommendation.consensus.get(ticker)
         decision = recommendation.decisions.per_ticker.get(ticker)
         if not decision:
             continue
-        consensus_text = consensus.direction if consensus else "n/a"
+        consensus_text = _field_value(consensus, "direction", "n/a")
+        action = _field_value(decision, "action", "hold")
+        confidence = float(_field_value(decision, "confidence", 0.0))
+        reasoning = _field_value(decision, "reasoning", "")
         table.add_row(
             escape(ticker),
             f"[{_status_color(consensus_text)}]{consensus_text.upper()}[/{_status_color(consensus_text)}]",
-            f"[bold {_status_color(decision.action)}]{decision.action.upper()}[/bold {_status_color(decision.action)}]",
-            f"{decision.confidence:.0%}",
-            escape(decision.reasoning or ""),
+            f"[bold {_status_color(action)}]{action.upper()}[/bold {_status_color(action)}]",
+            f"{confidence:.0%}",
+            escape(reasoning or ""),
         )
 
     console.print(table)

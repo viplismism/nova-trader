@@ -1,6 +1,7 @@
 from rich.console import Console
 
-from src.chat_cli import ChatSettings, NovaChat, _extract_tickers, _is_analysis_prompt
+from src.chat_cli import ChatSettings, NovaChat, _extract_tickers, _is_analysis_prompt, _render_recommendation
+from src.schemas.signals import Consensus, Decisions, Recommendation, Signal, TickerDecision
 
 
 def test_extract_tickers_from_natural_prompt():
@@ -46,3 +47,45 @@ def test_show_last_without_run_is_friendly_message():
     chat.handle("show last")
 
     assert "No previous run" in console.export_text()
+
+
+def test_render_recommendation_uses_ticker_keyed_consensus():
+    console = Console(record=True)
+    recommendation = Recommendation(
+        run_id="test-run",
+        as_of="2026-05-31T00:00:00Z",
+        tickers=["AAPL"],
+        signals=[
+            Signal(
+                agent_id="technical",
+                ticker="AAPL",
+                direction="neutral",
+                confidence=0.5,
+            )
+        ],
+        consensus={
+            "AAPL": Consensus(
+                ticker="AAPL",
+                direction="neutral",
+                confidence=0.5,
+                weighted_score=0.0,
+            )
+        },
+        decisions=Decisions(
+            per_ticker={
+                "AAPL": TickerDecision(
+                    ticker="AAPL",
+                    action="hold",
+                    confidence=0.5,
+                    reasoning="Neutral consensus",
+                )
+            }
+        ),
+        summary="AAPL: consensus=neutral, action=hold",
+    )
+
+    _render_recommendation(console, recommendation)
+
+    rendered = console.export_text()
+    assert "AAPL" in rendered
+    assert "HOLD" in rendered
