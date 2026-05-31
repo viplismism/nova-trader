@@ -1,6 +1,6 @@
 from rich.console import Console
 
-from src.chat_cli import ChatSettings, NovaChat, _extract_tickers, _is_analysis_prompt, _render_recommendation
+from src.chat_cli import ChatSettings, NovaChat, _extract_tickers, _is_analysis_prompt, _recommendation_summary_text, _render_recommendation, _ticker_details_text
 from src.schemas.signals import Consensus, Decisions, Recommendation, Signal, TickerDecision
 
 
@@ -89,3 +89,99 @@ def test_render_recommendation_uses_ticker_keyed_consensus():
     rendered = console.export_text()
     assert "AAPL" in rendered
     assert "HOLD" in rendered
+
+
+def test_recommendation_summary_text_is_plain_transcript_output():
+    recommendation = Recommendation(
+        run_id="test-run",
+        as_of="2026-05-31T00:00:00Z",
+        tickers=["AAPL"],
+        signals=[
+            Signal(
+                agent_id="technical",
+                ticker="AAPL",
+                direction="neutral",
+                confidence=0.5,
+            )
+        ],
+        consensus={
+            "AAPL": Consensus(
+                ticker="AAPL",
+                direction="neutral",
+                confidence=0.5,
+                weighted_score=0.0,
+            )
+        },
+        decisions=Decisions(
+            per_ticker={
+                "AAPL": TickerDecision(
+                    ticker="AAPL",
+                    action="hold",
+                    confidence=0.5,
+                    reasoning="Neutral consensus",
+                )
+            }
+        ),
+        summary="AAPL: consensus=neutral, action=hold",
+    )
+
+    text = _recommendation_summary_text(recommendation)
+
+    assert "Run test-run" in text
+    assert "AAPL" in text
+    assert "HOLD" in text
+    assert "Analyst reasoning" in text
+    assert "technical" in text
+
+
+def test_ticker_details_text_shows_agent_reasoning():
+    recommendation = Recommendation(
+        run_id="test-run",
+        as_of="2026-05-31T00:00:00Z",
+        tickers=["AAPL"],
+        signals=[
+            Signal(
+                agent_id="technical",
+                ticker="AAPL",
+                direction="bullish",
+                confidence=0.75,
+                reasoning="Momentum and trend are constructive.",
+            )
+        ],
+        consensus={
+            "AAPL": Consensus(
+                ticker="AAPL",
+                direction="bullish",
+                confidence=0.75,
+                weighted_score=0.5,
+            )
+        },
+        decisions=Decisions(
+            per_ticker={
+                "AAPL": TickerDecision(
+                    ticker="AAPL",
+                    action="hold",
+                    confidence=0.75,
+                    reasoning="No hedge available.",
+                )
+            }
+        ),
+        summary="AAPL: consensus=bullish, action=hold",
+    )
+
+    text = _ticker_details_text(recommendation, "AAPL")
+
+    assert "AAPL details" in text
+    assert "technical" in text
+    assert "Momentum and trend" in text
+
+
+def test_unknown_chat_prompt_gets_intro_instead_of_ticker_error():
+    console = Console(record=True)
+    chat = NovaChat(console, ChatSettings(provider="OpenAI", model="gpt-4o-mini"))
+
+    chat.handle("hi")
+    chat.handle("what's this is?")
+
+    rendered = console.export_text()
+    assert "portfolio-aware recommendation agent" in rendered

@@ -69,7 +69,8 @@ Open the chat-style agent CLI:
 poetry run nova
 ```
 
-Inside the chat, use plain commands:
+This opens a split-pane terminal workspace with a transcript, live run status,
+and message box. Inside the chat, use plain commands:
 
 ```text
 analyze AAPL,NVDA
