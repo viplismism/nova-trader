@@ -9,9 +9,10 @@ Intelligence Layer -> Decision Engine: Send route, assets, horizon, and constrai
 Decision Engine -> Decision Engine: Gather market data, fundamentals, news, and portfolio context
 Decision Engine -> Decision Engine: Run persona agents and quantitative agents
 Decision Engine -> Decision Engine: Apply risk, sizing, and portfolio constraints
+Decision Engine -> Decision Engine: Build hedged long/short recommendation package
 
 Decision Engine -> Delivery: Recommendation package
-Delivery -> User: Action, confidence, evidence, risks, and sizing
+Delivery -> User: Long, paired short, confidence, evidence, risks, and sizing
 
 -: Optional Execution
 

@@ -9,7 +9,8 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing_extensions import Literal
 
 from src.router.schemas import TimeHorizon
 
@@ -45,6 +46,21 @@ class RecommendationRisk(BaseModel):
     detail: str
 
 
+class HedgeRecommendation(BaseModel):
+    """Paired hedge required for equity long/short recommendations."""
+
+    required: bool = True
+    status: Literal["proposed", "missing", "not_required"] = "proposed"
+    short_ticker: str | None = None
+    hedge_ratio: float | None = Field(default=1.0, ge=0.0)
+    rationale: str = ""
+
+    @field_validator("short_ticker")
+    @classmethod
+    def normalize_short_ticker(cls, ticker: str | None) -> str | None:
+        return ticker.strip().upper() if ticker else None
+
+
 class AgentOpinion(BaseModel):
     agent_id: str
     ticker: str
@@ -78,6 +94,7 @@ class RecommendationResult(BaseModel):
     risks: list[RecommendationRisk] = Field(default_factory=list)
     evidence: list[EvidenceRef] = Field(default_factory=list)
     agent_opinions: list[AgentOpinion] = Field(default_factory=list)
+    hedge: HedgeRecommendation | None = None
     what_would_change_our_mind: list[str] = Field(default_factory=list)
     model_notes: str | None = None
 
@@ -85,6 +102,13 @@ class RecommendationResult(BaseModel):
     @classmethod
     def normalize_ticker(cls, ticker: str) -> str:
         return ticker.strip().upper()
+
+    @model_validator(mode="after")
+    def require_short_hedge_for_opening_longs(self):
+        if self.action in {RecommendationAction.STRONG_BUY, RecommendationAction.BUY}:
+            if not self.hedge or self.hedge.status != "proposed" or not self.hedge.short_ticker:
+                raise ValueError("Buy recommendations require a proposed short hedge in equity long/short mode")
+        return self
 
     def to_trade_decision(self) -> dict:
         """Convert recommendation to the legacy portfolio decision shape."""

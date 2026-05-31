@@ -1,7 +1,7 @@
 """Reusable scoring functions for agent analysis.
 
 Each function takes financial data and returns {"score": float, "max_score": float, "details": str}.
-Agents compose these via their YAML configs.
+Agents compose these directly in their runner modules.
 """
 
 from __future__ import annotations
