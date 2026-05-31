@@ -55,6 +55,14 @@ MODEL_PROVIDER=OpenAI
 MODEL_NAME=gpt-4o-mini
 ```
 
+MiniMax is also available through its OpenAI-compatible API:
+
+```text
+MINIMAX_API_KEY=...
+MODEL_PROVIDER=MiniMax
+MODEL_NAME=MiniMax-M2.7
+```
+
 Run a recommendation:
 
 ```bash
@@ -128,6 +136,7 @@ Nova Trader uses direct SDK/HTTP adapters. The supported provider paths are:
 - OpenRouter
 - DeepSeek
 - Groq
+- MiniMax
 - xAI
 - Ollama local models
 

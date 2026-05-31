@@ -105,6 +105,12 @@ def _openai_compatible_config(provider: str, api_keys: dict | None) -> tuple[str
         return _api_key(api_keys, "DEEPSEEK_API_KEY"), "https://api.deepseek.com", {}
     if provider == "groq":
         return _api_key(api_keys, "GROQ_API_KEY"), "https://api.groq.com/openai/v1", {}
+    if provider == "minimax":
+        return (
+            _api_key(api_keys, "MINIMAX_API_KEY"),
+            os.getenv("MINIMAX_API_BASE", "https://api.minimax.io/v1"),
+            {},
+        )
     if provider == "xai":
         return _api_key(api_keys, "XAI_API_KEY"), "https://api.x.ai/v1", {}
     raise ValueError(f"Provider {provider!r} is not OpenAI-compatible in this adapter.")
@@ -245,7 +251,7 @@ def _call_json_model(
 ) -> tuple[BaseModel, dict]:
     """Returns (parsed_model, telemetry_dict)."""
     provider = _provider_name(model_provider)
-    if provider in {"openai", "openrouter", "deepseek", "groq", "xai"}:
+    if provider in {"openai", "openrouter", "deepseek", "groq", "minimax", "xai"}:
         return _call_openai_compatible_json(
             prompt=prompt,
             pydantic_model=pydantic_model,
@@ -271,7 +277,7 @@ def _call_json_model(
         )
     raise ValueError(
         f"Provider {model_provider!r} has no direct adapter yet. "
-        "Use OpenAI, Azure OpenAI, OpenRouter, DeepSeek, Groq, xAI, or Ollama."
+        "Use OpenAI, Azure OpenAI, OpenRouter, DeepSeek, Groq, MiniMax, xAI, or Ollama."
     )
 
 

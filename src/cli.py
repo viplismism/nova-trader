@@ -11,6 +11,7 @@ Every run writes to ~/.nova-trader/runs/<run_id>/ (overridable via NOVA_RUNS_DIR
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -69,8 +70,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--agents", default="",
         help=f"Comma-separated agent ids (default: all). Available: {','.join(all_agent_ids())}",
     )
-    run.add_argument("--model-name", default="gpt-4.1")
-    run.add_argument("--model-provider", default="OpenAI")
+    run.add_argument("--model-name", default=os.getenv("MODEL_NAME", "gpt-4.1"))
+    run.add_argument("--model-provider", default=os.getenv("MODEL_PROVIDER", "OpenAI"))
     run.add_argument("--seed", type=int, default=None, help="Override the LLM seed (default: derived from run_id)")
     run.add_argument("--json", action="store_true", help="Print the full Recommendation as JSON")
     run.add_argument("--no-progress", action="store_true")
