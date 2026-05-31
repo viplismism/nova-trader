@@ -1,8 +1,11 @@
 from colorama import Fore, Style
 from tabulate import tabulate
-from .analysts import ANALYST_ORDER
+from src.registry import AGENT_REGISTRY
 import os
 import json
+
+# Display ordering built from the new agent registry.
+ANALYST_ORDER = [(spec.display_name, spec.agent_id) for spec in AGENT_REGISTRY.values()]
 
 
 def sort_agent_signals(signals):
@@ -219,6 +222,43 @@ def print_trading_output(result: dict) -> None:
             colalign=("left", "center", "right", "right", "center", "center", "center"),
         )
     )
+
+    hedge_plan = result.get("hedge_plan") or {}
+    hedge_pairs = hedge_plan.get("pairs") or []
+    if hedge_plan:
+        print(f"\n{Fore.WHITE}{Style.BRIGHT}HEDGE PLAN:{Style.RESET_ALL}")
+        print(
+            tabulate(
+                [
+                    ["Status", hedge_plan.get("status", "not_required")],
+                    ["Long Notional", f"${hedge_plan.get('long_notional', 0.0):,.2f}"],
+                    ["Short Notional", f"${hedge_plan.get('short_notional', 0.0):,.2f}"],
+                    ["Net Notional", f"${hedge_plan.get('net_notional', 0.0):,.2f}"],
+                ],
+                tablefmt="grid",
+                colalign=("left", "right"),
+            )
+        )
+    if hedge_pairs:
+        pair_rows = [
+            [
+                pair.get("pair_id"),
+                pair.get("long_ticker"),
+                pair.get("long_quantity"),
+                pair.get("short_ticker"),
+                pair.get("short_quantity"),
+                f"{pair.get('hedge_ratio', 0.0):.2f}",
+            ]
+            for pair in hedge_pairs
+        ]
+        print(
+            tabulate(
+                pair_rows,
+                headers=["Pair", "Long", "Long Qty", "Short", "Short Qty", "Hedge Ratio"],
+                tablefmt="grid",
+                colalign=("left", "left", "right", "left", "right", "right"),
+            )
+        )
     
     # Print Portfolio Manager's reasoning if available
     if portfolio_manager_reasoning:

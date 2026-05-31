@@ -1,6 +1,6 @@
 # Nova Trader V0 Architecture
 
-Nova Trader V0 should be scoped around one clear product direction: a hedge-fund style recommendation engine. The system should help an investment user ask a market, portfolio, risk, valuation, or backtesting question and receive a structured recommendation backed by data, multiple analyst agents, risk checks, and evidence.
+Nova Trader V0 should be scoped around one clear product direction: a hedge-fund style equity long/short recommendation engine. The system should help an investment user ask a market, portfolio, risk, valuation, or backtesting question and receive a structured recommendation backed by data, multiple analyst agents, risk checks, hedge pairing, and evidence.
 
 The architecture below adapts the layered agent-platform pattern to Nova Trader. The important idea is that the interface can stay simple in V0, but the backend should already be shaped like a real recommendation system.
 
@@ -23,7 +23,7 @@ flowchart TB
         PERSONA["Investor Persona Agents"]
         QUANT["Quantitative Agents"]
         RISK["Risk Manager"]
-        PORTFOLIO["Portfolio Manager"]
+        PORTFOLIO["Portfolio Manager + Hedge Pairing"]
         BACKTEST["Backtesting Engine"]
     end
 
@@ -92,7 +92,7 @@ The user layer is intentionally lightweight in V0. The current CLI and interacti
 
 The recommendation gateway is the product control plane. It receives the user query, tracks query and run state, routes the request to the correct workflow, and enforces a consistent recommendation contract. The router should eventually be backed by a BERT or small language model, but the contract should be stable before the model becomes important.
 
-The execution layer is the agent fleet. This is where the current analyst agents, quantitative agents, risk manager, portfolio manager, and backtesting engine live. The agents should not just produce prose. They should produce structured opinions that can be compared, audited, scored, and fed into portfolio-aware recommendation logic.
+The execution layer is the agent fleet. This is where the current analyst agents, quantitative agents, risk manager, portfolio manager, hedge-pairing logic, and backtesting engine live. The agents should not just produce prose. They should produce structured opinions that can be compared, audited, scored, and fed into portfolio-aware recommendation logic.
 
 The integration layer is the data and evidence foundation. It gathers market prices, fundamentals, valuation inputs, news, sentiment, insider activity, and portfolio context. Over time this should become an evidence store so the system can explain why it made a recommendation and which facts supported the answer.
 
@@ -100,9 +100,11 @@ The evaluation layer is what makes this a product instead of a demo. Every query
 
 ## V0 Product Flow
 
-In V0, the ideal flow is simple. A user asks a question such as whether to buy a stock, compare two equities, review portfolio risk, or run a backtest. The gateway converts that question into a structured route, selects the right workflow, pulls the required data, runs the relevant agents, applies risk and portfolio constraints, and returns a recommendation with action, confidence, conviction, evidence, risks, sizing, and explanation.
+In V0, the ideal flow is simple. A user asks a question such as whether to buy a stock, compare two equities, review portfolio risk, or run a backtest. The gateway converts that question into a structured route, selects the right workflow, pulls the required data, runs the relevant agents, applies risk and portfolio constraints, pairs opening long recommendations with corresponding short hedges, and returns a recommendation with action, hedge, confidence, conviction, evidence, risks, sizing, and explanation.
 
 The core principle is that the system should compute the recommendation, while the language model explains it. This keeps the product grounded in data, agent outputs, and risk logic instead of becoming a generic chatbot.
+
+In equity long/short mode, a buy recommendation is not considered complete by itself. The structured recommendation or portfolio manager layer must either attach a short hedge candidate or block/reduce the buy until a hedge is available.
 
 ## V0 Scope Boundaries
 

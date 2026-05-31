@@ -10,9 +10,13 @@ import questionary
 
 from .engine import BacktestEngine
 from src.llm.models import LLM_ORDER, OLLAMA_LLM_ORDER, get_model_info, ModelProvider
-from src.utils.analysts import ANALYST_ORDER
-from src.main import run_hedge_fund
+from src.backtest_adapter import run_hedge_fund
+from src.registry import AGENT_REGISTRY
 from src.utils.ollama import ensure_ollama_and_model
+
+
+# Build the (display_name, agent_id) ordering from the new registry.
+ANALYST_ORDER = [(spec.display_name, spec.agent_id) for spec in AGENT_REGISTRY.values()]
 
 
 def main() -> int:

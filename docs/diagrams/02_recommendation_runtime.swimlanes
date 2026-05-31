@@ -12,7 +12,8 @@ Research Agents -> Context: Analyst opinions
 
 Context -> Risk & Portfolio: Send signals and portfolio state
 Risk & Portfolio -> Risk & Portfolio: Check exposure, sizing, and constraints
-Risk & Portfolio -> Risk & Portfolio: Aggregate signals into a portfolio decision
+Risk & Portfolio -> Risk & Portfolio: Aggregate signals into long/short candidates
+Risk & Portfolio -> Risk & Portfolio: Pair each opening buy with a short hedge
 
 Risk & Portfolio -> Answer: Create recommendation
 Answer -> App: Render final response
@@ -21,6 +22,7 @@ Answer -> App: Render final response
 
 note App, Answer:
 Output includes:
-action, confidence, conviction,
+action, paired hedge,
+confidence, conviction,
 evidence, risks, sizing,
 and what would change the view.

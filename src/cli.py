@@ -1,0 +1,428 @@
+"""Nova Trader CLI.
+
+Three verbs:
+    nova run --tickers AAPL,NVDA      Live run — fetches data, calls agents, records to disk.
+    nova show <run_id>                View-only — re-prints a saved Recommendation.
+    nova rerun <run_id>               Re-execute against the saved snapshot. Saves a new run.
+
+Every run writes to ~/.nova-trader/runs/<run_id>/ (overridable via NOVA_RUNS_DIR env var).
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+from datetime import date, datetime, timezone
+from pathlib import Path
+
+from dateutil.relativedelta import relativedelta
+from dotenv import load_dotenv
+from rich import box
+from rich.console import Console
+from rich.padding import Padding
+from rich.table import Table
+
+from src.runs import RunRecorder, runs_root
+from src.schemas.context import ModelConfig, RunContext, RunRequest
+from src.schemas.portfolio import Portfolio, Position, RealizedGains
+from src.schemas.signals import Recommendation
+from src.schemas.snapshot import MarketSnapshot
+from src.utils.progress import progress
+from src.engine import run_engine
+from src.registry import AGENT_REGISTRY, all_agent_ids
+
+# ── Theme: warm earth tones (matches the legacy nova CLI) ───
+INK = "grey85"
+STONE = "grey62"
+ASH = "grey50"
+DARK_ASH = "grey35"
+SAGE = "#a7c080"     # bullish / buy
+TEAL = "#7fbbb3"     # headers
+ROSE = "#e67e80"     # bearish / sell / short
+AMBER = "#dbbc7f"    # neutral / hold
+
+SYM_DIAMOND = "◆"
+
+console = Console()
+
+
+def _build_arg_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="nova", description="Nova Trader — recommendation engine")
+    sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
+
+    # ── nova run ──
+    run = sub.add_parser("run", help="Live run: fetch data, run agents, record to disk")
+    run.add_argument("--tickers", required=True, help="Comma-separated, e.g. AAPL,NVDA")
+    run.add_argument(
+        "--start-date",
+        default=(datetime.now() - relativedelta(months=3)).strftime("%Y-%m-%d"),
+        help="YYYY-MM-DD (default: 3 months ago)",
+    )
+    run.add_argument(
+        "--end-date",
+        default=datetime.now().strftime("%Y-%m-%d"),
+        help="YYYY-MM-DD (default: today)",
+    )
+    run.add_argument("--initial-cash", type=float, default=100_000.0)
+    run.add_argument("--margin-requirement", type=float, default=0.5)
+    run.add_argument(
+        "--agents", default="",
+        help=f"Comma-separated agent ids (default: all). Available: {','.join(all_agent_ids())}",
+    )
+    run.add_argument("--model-name", default="gpt-4.1")
+    run.add_argument("--model-provider", default="OpenAI")
+    run.add_argument("--seed", type=int, default=None, help="Override the LLM seed (default: derived from run_id)")
+    run.add_argument("--json", action="store_true", help="Print the full Recommendation as JSON")
+    run.add_argument("--no-progress", action="store_true")
+    run.add_argument("--no-record", action="store_true", help="Don't write to ~/.nova-trader/runs/")
+
+    # ── nova show <run_id> ──
+    show = sub.add_parser("show", help="View a saved run's Recommendation (no re-execution)")
+    show.add_argument("run_id", help="Run id (the directory name under ~/.nova-trader/runs/)")
+    show.add_argument("--json", action="store_true")
+
+    # ── nova rerun <run_id> ──
+    rerun = sub.add_parser("rerun", help="Replay a saved run against its cached snapshot")
+    rerun.add_argument("run_id", help="Run id to replay")
+    rerun.add_argument("--json", action="store_true")
+    rerun.add_argument("--no-progress", action="store_true")
+
+    return p
+
+
+def _build_context_for_run(args: argparse.Namespace) -> RunContext:
+    """Build a fresh RunContext for `nova run`."""
+    tickers = [t.strip().upper() for t in args.tickers.split(",") if t.strip()]
+    if not tickers:
+        raise SystemExit("--tickers must contain at least one symbol")
+
+    portfolio = Portfolio(
+        cash=args.initial_cash,
+        margin_requirement=args.margin_requirement,
+        margin_used=0.0,
+        positions={t: Position() for t in tickers},
+        realized_gains={t: RealizedGains() for t in tickers},
+    )
+    request = RunRequest(
+        tickers=tickers,
+        start_date=date.fromisoformat(args.start_date),
+        end_date=date.fromisoformat(args.end_date),
+        portfolio=portfolio,
+        model=ModelConfig(provider=args.model_provider, name=args.model_name),
+        selected_agents=[a.strip() for a in args.agents.split(",") if a.strip()],
+    )
+    return RunContext(
+        request=request,
+        as_of=datetime.now(timezone.utc),
+        seed=args.seed,
+    )
+
+
+def _build_context_from_metadata(meta: dict) -> tuple[RunContext, MarketSnapshot]:
+    """Rebuild a RunContext + load the cached snapshot for a `nova rerun`.
+
+    The rerun gets a NEW run_id (so it doesn't overwrite the original record),
+    but reuses the original seed + tickers + dates so the LLM result should
+    match if nothing else changed.
+    """
+    req_data = {
+        "tickers": meta["tickers"],
+        "start_date": date.fromisoformat(meta["start_date"]),
+        "end_date": date.fromisoformat(meta["end_date"]),
+        "portfolio": Portfolio(
+            cash=100_000.0,  # Portfolio cash is irrelevant for replay analytics.
+            margin_requirement=0.5,
+            positions={t: Position() for t in meta["tickers"]},
+            realized_gains={t: RealizedGains() for t in meta["tickers"]},
+        ),
+        "model": ModelConfig(**meta["model"]),
+        "selected_agents": meta.get("selected_agents", []),
+    }
+    request = RunRequest(**req_data)
+    ctx = RunContext(
+        request=request,
+        as_of=datetime.now(timezone.utc),
+        seed=meta.get("seed"),
+    )
+    snapshot_data = RunRecorder.load_snapshot_dict(meta["run_id"])
+    snapshot = MarketSnapshot.model_validate(snapshot_data)
+    return ctx, snapshot
+
+
+def _action_color(action: str) -> str:
+    a = action.upper()
+    if a in ("BUY", "STRONG_BUY", "COVER"):
+        return SAGE
+    if a in ("SELL", "STRONG_SELL", "SHORT"):
+        return ROSE
+    return AMBER
+
+
+def _direction_color(direction: str) -> str:
+    d = direction.upper()
+    if d == "BULLISH":
+        return SAGE
+    if d == "BEARISH":
+        return ROSE
+    return AMBER
+
+
+def _display_name(agent_id: str) -> str:
+    spec = AGENT_REGISTRY.get(agent_id)
+    if spec:
+        return spec.display_name
+    return agent_id.replace("_", " ").title()
+
+
+def _print_human(recommendation) -> None:
+    console.print()
+    console.print(
+        f"  {SYM_DIAMOND} Run [{ASH}]{recommendation.run_id}[/{ASH}]",
+        style=f"bold {TEAL}",
+    )
+    console.print()
+
+    # Group signals per ticker once for easy access.
+    signals_by_ticker: dict[str, list] = {}
+    for s in recommendation.signals:
+        signals_by_ticker.setdefault(s.ticker, []).append(s)
+
+    for ticker in recommendation.tickers:
+        decision = recommendation.decisions.per_ticker.get(ticker)
+        if decision is None:
+            continue
+
+        action = decision.action.upper()
+        confidence = decision.confidence
+        action_color = _action_color(action)
+
+        # Header: TICKER → ACTION qty shares (xx%)
+        console.print(f"  {ticker}", style=f"bold {TEAL}", end="")
+        console.print("  →  ", style=ASH, end="")
+        console.print(action, style=f"bold {action_color}", end="")
+        if decision.quantity:
+            console.print(f" {decision.quantity} shares", style=STONE, end="")
+        console.print(f"  ({confidence:.0%})", style=ASH)
+        console.print()
+
+        # Explicit column widths so columns don't grow to fill wide terminals.
+        # All three tables share the first-column width for vertical alignment.
+        col1_width = 32        # Analyst / Why / Risk all use this (fits "● News Sentiment Analyst")
+        col2_width = 10        # Signal column width inside analysts table
+        wrap_width = 56        # Reasoning / Value columns wrap inside this width
+
+        # Analysts table — clean columns, no reasoning column (kept short)
+        analysts_table = Table(
+            box=box.SIMPLE,
+            header_style=f"bold {TEAL}",
+            show_edge=False,
+            pad_edge=False,
+            padding=(0, 2),
+        )
+        analysts_table.add_column("Analyst", style=STONE, no_wrap=True, width=col1_width)
+        analysts_table.add_column("Signal", no_wrap=True, width=col2_width)
+        analysts_table.add_column("Confidence", no_wrap=True, width=12)
+        analysts_table.add_column("%", justify="right", no_wrap=True, width=6)
+
+        reasonings: list[tuple[str, str, str]] = []  # (name, color, text)
+
+        for sig in signals_by_ticker.get(ticker, []):
+            name = _display_name(sig.agent_id)
+            if sig.status == "failed":
+                direction, color = "FAILED", ROSE
+                bar, pct = "—", "—"
+                reasonings.append((name, ROSE, sig.error or "agent crashed"))
+            elif sig.status == "abstained":
+                direction, color = "ABSTAIN", ASH
+                bar, pct = "—", "—"
+                reasonings.append((name, ASH, sig.reasoning or "no opinion"))
+            else:
+                direction = sig.direction.upper()
+                color = _direction_color(direction)
+                filled = int(sig.confidence * 10)
+                bar = "█" * filled + "░" * (10 - filled)
+                pct = f"{sig.confidence:.0%}"
+                if sig.reasoning:
+                    reasonings.append((name, color, sig.reasoning))
+
+            analysts_table.add_row(
+                name,
+                f"[bold {color}]{direction}[/bold {color}]",
+                f"[{color}]{bar}[/{color}]",
+                pct,
+            )
+
+        console.print(Padding(analysts_table, (0, 0, 1, 2)))
+
+        # Reasoning — its own table per ticker so text wraps inside the column
+        if reasonings:
+            why_table = Table(
+                box=box.SIMPLE,
+                header_style=f"bold {TEAL}",
+                show_edge=False,
+                pad_edge=False,
+                padding=(0, 2),
+            )
+            why_table.add_column("Why", style=STONE, no_wrap=True, width=col1_width)
+            why_table.add_column("Reasoning", style=INK, overflow="fold", width=wrap_width)
+            for name, color, text in reasonings:
+                why_table.add_row(
+                    f"[{color}]●[/{color}] {name}",
+                    text,
+                )
+            console.print(Padding(why_table, (0, 0, 1, 2)))
+
+        # Risk + Decision — single table so the Decision value stays in-column
+        lim = recommendation.limits.per_ticker.get(ticker)
+        risk_table = Table(
+            box=box.SIMPLE,
+            header_style=f"bold {TEAL}",
+            show_edge=False,
+            pad_edge=False,
+            padding=(0, 2),
+        )
+        risk_table.add_column("Risk", style=ASH, no_wrap=True, width=col1_width)
+        risk_table.add_column("Value", style=INK, overflow="fold", width=wrap_width)
+        if lim:
+            risk_table.add_row("Price",        f"${lim.current_price:,.2f}")
+            risk_table.add_row("Volatility",   f"{lim.annualized_volatility:.1%} annualized")
+            risk_table.add_row("Max position", f"{lim.max_shares} shares  (${lim.max_position_dollars:,.0f})")
+            risk_table.add_row("Correlation",  f"×{lim.correlation_multiplier:.2f}")
+        # Decision as a row inside the same table, styled to stand out.
+        decision_text = decision.reasoning or "—"
+        if decision.hedge_pair_id:
+            decision_text += f"  [{ASH}](hedge pair: {decision.hedge_pair_id})[/{ASH}]"
+        risk_table.add_row(
+            f"[bold {TEAL}]Decision[/bold {TEAL}]",
+            decision_text,
+        )
+        console.print(Padding(risk_table, (0, 0, 1, 2)))
+
+    # Hedge plan summary
+    plan = recommendation.decisions.hedge_plan
+    if plan.pairs or plan.blocked_longs:
+        console.print(f"  {SYM_DIAMOND} Hedge plan  [{ASH}]status={plan.status}[/{ASH}]", style=f"bold {TEAL}")
+        for p in plan.pairs:
+            console.print(
+                f"    LONG {p.long_quantity} [bold {SAGE}]{p.long_ticker}[/bold {SAGE}]  "
+                f"vs  SHORT {p.short_quantity} [bold {ROSE}]{p.short_ticker}[/bold {ROSE}]  "
+                f"[{ASH}]ratio {p.hedge_ratio:.2f}[/{ASH}]",
+                style=STONE,
+            )
+        if plan.blocked_longs:
+            console.print(
+                f"    [bold {AMBER}]blocked[/bold {AMBER}] (no hedge): "
+                f"{', '.join(plan.blocked_longs)}",
+                style=STONE,
+            )
+        console.print()
+
+    # Signal health footer
+    ok = sum(1 for s in recommendation.signals if s.status == "ok")
+    abstained = sum(1 for s in recommendation.signals if s.status == "abstained")
+    failed = sum(1 for s in recommendation.signals if s.status == "failed")
+    console.print(
+        f"  [{ASH}]{len(recommendation.signals)} signals: "
+        f"[{SAGE}]{ok} ok[/{SAGE}]  "
+        f"[{AMBER}]{abstained} abstained[/{AMBER}]  "
+        f"[{ROSE}]{failed} failed[/{ROSE}][/{ASH}]"
+    )
+    console.print()
+
+
+def _cmd_run(args: argparse.Namespace) -> int:
+    try:
+        ctx = _build_context_for_run(args)
+    except Exception as e:
+        print(f"Bad arguments: {e}", file=sys.stderr)
+        return 2
+
+    if not args.no_progress:
+        progress.start()
+    try:
+        recommendation = run_engine(
+            ctx,
+            selected_agents=ctx.request.selected_agents or None,
+            record=not args.no_record,
+        )
+    finally:
+        if not args.no_progress:
+            progress.stop()
+
+    if args.json:
+        print(recommendation.model_dump_json(indent=2))
+    else:
+        _print_human(recommendation)
+        if not args.no_record:
+            console.print(
+                f"  [{ASH}]saved to {runs_root() / ctx.run_id}/[/{ASH}]"
+            )
+    return 0
+
+
+def _cmd_show(args: argparse.Namespace) -> int:
+    if not RunRecorder.exists(args.run_id):
+        print(f"No run found at {runs_root() / args.run_id}", file=sys.stderr)
+        return 2
+    try:
+        rec_data = RunRecorder.load_recommendation_dict(args.run_id)
+        recommendation = Recommendation.model_validate(rec_data)
+    except FileNotFoundError:
+        print(f"Run {args.run_id} has no recommendation.json (incomplete run?)", file=sys.stderr)
+        return 2
+    if args.json:
+        print(recommendation.model_dump_json(indent=2))
+    else:
+        _print_human(recommendation)
+    return 0
+
+
+def _cmd_rerun(args: argparse.Namespace) -> int:
+    if not RunRecorder.exists(args.run_id):
+        print(f"No run found at {runs_root() / args.run_id}", file=sys.stderr)
+        return 2
+    meta = RunRecorder.load_metadata(args.run_id)
+    ctx, snapshot = _build_context_from_metadata(meta)
+
+    if not args.no_progress:
+        progress.start()
+    try:
+        recommendation = run_engine(
+            ctx,
+            selected_agents=ctx.request.selected_agents or None,
+            snapshot=snapshot,
+            record=True,
+        )
+    finally:
+        if not args.no_progress:
+            progress.stop()
+
+    if args.json:
+        print(recommendation.model_dump_json(indent=2))
+    else:
+        _print_human(recommendation)
+        console.print(
+            f"  [{ASH}]rerun saved to {runs_root() / ctx.run_id}/  "
+            f"(original: {args.run_id})[/{ASH}]"
+        )
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    load_dotenv()
+    parser = _build_arg_parser()
+    args = parser.parse_args(argv)
+
+    if args.command == "run":
+        return _cmd_run(args)
+    if args.command == "show":
+        return _cmd_show(args)
+    if args.command == "rerun":
+        return _cmd_rerun(args)
+
+    parser.print_help()
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

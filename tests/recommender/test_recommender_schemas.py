@@ -1,7 +1,10 @@
+import pytest
+
 from src.recommender import (
     AgentOpinion,
     Conviction,
     EvidenceRef,
+    HedgeRecommendation,
     RecommendationAction,
     RecommendationResult,
     RecommendationRisk,
@@ -34,9 +37,15 @@ def test_recommendation_normalizes_ticker_and_exports_legacy_decision():
                 weight=0.8,
             )
         ],
+        hedge=HedgeRecommendation(
+            short_ticker="amd",
+            hedge_ratio=1.0,
+            rationale="Pair the long with a weaker semiconductor short.",
+        ),
     )
 
     assert result.ticker == "NVDA"
+    assert result.hedge.short_ticker == "AMD"
     assert result.to_trade_decision() == {
         "action": "buy",
         "confidence": 68,
@@ -55,3 +64,15 @@ def test_agent_opinion_normalizes_ticker_and_signal():
 
     assert opinion.ticker == "MSFT"
     assert opinion.signal == "bullish"
+
+
+def test_buy_recommendation_requires_short_hedge():
+    with pytest.raises(ValueError, match="short hedge"):
+        RecommendationResult(
+            ticker="nvda",
+            action=RecommendationAction.BUY,
+            conviction=Conviction.MEDIUM,
+            confidence=0.68,
+            horizon=TimeHorizon.MEDIUM_TERM,
+            summary="Positive growth setup.",
+        )

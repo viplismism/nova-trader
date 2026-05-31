@@ -38,3 +38,4 @@ htmlcov/
 
 # Data caches
 *.cache
+.nova-runs/

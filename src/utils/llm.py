@@ -1,86 +1,382 @@
-"""Helper functions for LLM"""
+"""Small direct LLM helper used by agents."""
 
 import json
+import os
+import requests
 from pydantic import BaseModel
-from src.llm.models import get_model, get_model_info
 from src.utils.progress import progress
-from src.graph.state import AgentState
+# Lightweight state shim — call_llm accepts a dict-like state with a "metadata" key.
+# Kept loose because both the new v2 engine and the backtest adapter pass plain dicts.
+StateLike = dict[str, any]
+
+
+def _provider_name(model_provider: str | object) -> str:
+    if hasattr(model_provider, "value"):
+        return str(model_provider.value).lower()
+    return str(model_provider).lower()
+
+
+def _message_role(message: object) -> str:
+    message_type = getattr(message, "type", "")
+    if message_type == "system":
+        return "system"
+    if message_type == "ai":
+        return "assistant"
+    return "user"
+
+
+def _prompt_to_openai_messages(prompt: object) -> list[dict[str, str]]:
+    """Convert supported prompt shapes into OpenAI chat messages."""
+    if isinstance(prompt, str):
+        messages = [{"role": "user", "content": prompt}]
+    elif hasattr(prompt, "to_messages"):
+        messages = [
+            {"role": _message_role(message), "content": str(getattr(message, "content", ""))}
+            for message in prompt.to_messages()
+        ]
+    elif isinstance(prompt, list):
+        messages = []
+        for item in prompt:
+            if isinstance(item, dict):
+                messages.append({
+                    "role": str(item.get("role", "user")),
+                    "content": str(item.get("content", "")),
+                })
+            else:
+                messages.append({
+                    "role": _message_role(item),
+                    "content": str(getattr(item, "content", item)),
+                })
+    else:
+        messages = [{"role": "user", "content": str(prompt)}]
+
+    joined = " ".join(message["content"] for message in messages).lower()
+    if "json" not in joined:
+        messages.insert(0, {
+            "role": "system",
+            "content": "Return only valid JSON that matches the requested schema.",
+        })
+    return messages
+
+
+def _extract_json_object(content: str) -> dict | None:
+    """Parse a JSON object, including common fenced-code responses."""
+    if not content:
+        return None
+
+    stripped = content.strip()
+    if stripped.startswith("```"):
+        parsed = extract_json_from_response(stripped)
+        if parsed is not None:
+            return parsed
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        start = stripped.find("{")
+        end = stripped.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(stripped[start:end + 1])
+            except json.JSONDecodeError:
+                return None
+    return None
+
+
+def _api_key(api_keys: dict | None, name: str) -> str:
+    value = (api_keys or {}).get(name) or os.getenv(name)
+    if not value:
+        raise ValueError(f"{name} not found. Set {name} in .env.")
+    return value
+
+
+def _openai_compatible_config(provider: str, api_keys: dict | None) -> tuple[str, str | None, dict[str, str]]:
+    provider = provider.lower()
+    if provider == "openai":
+        return _api_key(api_keys, "OPENAI_API_KEY"), os.getenv("OPENAI_API_BASE") or None, {}
+    if provider == "openrouter":
+        headers = {}
+        if os.getenv("YOUR_SITE_URL"):
+            headers["HTTP-Referer"] = os.getenv("YOUR_SITE_URL", "")
+        if os.getenv("YOUR_SITE_NAME"):
+            headers["X-Title"] = os.getenv("YOUR_SITE_NAME", "Nova Trader")
+        return _api_key(api_keys, "OPENROUTER_API_KEY"), "https://openrouter.ai/api/v1", headers
+    if provider == "deepseek":
+        return _api_key(api_keys, "DEEPSEEK_API_KEY"), "https://api.deepseek.com", {}
+    if provider == "groq":
+        return _api_key(api_keys, "GROQ_API_KEY"), "https://api.groq.com/openai/v1", {}
+    if provider == "xai":
+        return _api_key(api_keys, "XAI_API_KEY"), "https://api.x.ai/v1", {}
+    raise ValueError(f"Provider {provider!r} is not OpenAI-compatible in this adapter.")
+
+
+def _call_openai_compatible_json(
+    *,
+    prompt: object,
+    pydantic_model: type[BaseModel],
+    model_name: str,
+    model_provider: str,
+    api_keys: dict | None,
+    seed: int | None,
+) -> tuple[BaseModel, dict]:
+    """Call OpenAI or an OpenAI-compatible endpoint. Returns (parsed, telemetry)."""
+    from openai import OpenAI
+
+    api_key, base_url, default_headers = _openai_compatible_config(model_provider, api_keys)
+
+    client = OpenAI(api_key=api_key, base_url=base_url, default_headers=default_headers or None)
+    kwargs = {
+        "model": model_name,
+        "messages": _prompt_to_openai_messages(prompt),
+        "response_format": {"type": "json_object"},
+        "temperature": 0,
+    }
+    if seed is not None:
+        kwargs["seed"] = seed
+    response = client.chat.completions.create(**kwargs)
+    content = response.choices[0].message.content or ""
+    telemetry = {
+        "system_fingerprint": getattr(response, "system_fingerprint", None),
+        "prompt_tokens": getattr(response.usage, "prompt_tokens", None) if response.usage else None,
+        "completion_tokens": getattr(response.usage, "completion_tokens", None) if response.usage else None,
+        "response_content": content,
+    }
+    parsed = _extract_json_object(content)
+    if parsed is None:
+        raise ValueError(f"Model returned non-JSON content: {content!r}")
+    return pydantic_model.model_validate(parsed), telemetry
+
+
+def _call_azure_openai_json(
+    *,
+    prompt: object,
+    pydantic_model: type[BaseModel],
+    model_name: str,
+    api_keys: dict | None,
+    seed: int | None,
+) -> tuple[BaseModel, dict]:
+    """Call Azure OpenAI with the official OpenAI SDK. Returns (parsed, telemetry)."""
+    from openai import AzureOpenAI
+
+    api_key = (api_keys or {}).get("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
+    endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+    deployment = model_name or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+    if not api_key:
+        raise ValueError("AZURE_OPENAI_API_KEY not found. Set it in .env.")
+    if not endpoint:
+        raise ValueError("AZURE_OPENAI_ENDPOINT not found. Set it in .env.")
+    if not deployment:
+        raise ValueError("Azure deployment missing. Set MODEL_NAME or AZURE_OPENAI_DEPLOYMENT_NAME.")
+
+    client = AzureOpenAI(
+        api_key=api_key,
+        azure_endpoint=endpoint,
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+    )
+    kwargs = {
+        "model": deployment,
+        "messages": _prompt_to_openai_messages(prompt),
+        "response_format": {"type": "json_object"},
+        "temperature": 0,
+    }
+    if seed is not None:
+        kwargs["seed"] = seed
+    response = client.chat.completions.create(**kwargs)
+    content = response.choices[0].message.content or ""
+    telemetry = {
+        "system_fingerprint": getattr(response, "system_fingerprint", None),
+        "prompt_tokens": getattr(response.usage, "prompt_tokens", None) if response.usage else None,
+        "completion_tokens": getattr(response.usage, "completion_tokens", None) if response.usage else None,
+        "response_content": content,
+    }
+    parsed = _extract_json_object(content)
+    if parsed is None:
+        raise ValueError(f"Azure OpenAI returned non-JSON content: {content!r}")
+    return pydantic_model.model_validate(parsed), telemetry
+
+
+def _call_ollama_json(
+    *,
+    prompt: object,
+    pydantic_model: type[BaseModel],
+    model_name: str,
+    seed: int | None,
+) -> tuple[BaseModel, dict]:
+    """Call Ollama directly over HTTP. Returns (parsed, telemetry)."""
+    ollama_host = os.getenv("OLLAMA_HOST", "localhost")
+    base_url = os.getenv("OLLAMA_BASE_URL", f"http://{ollama_host}:11434").rstrip("/")
+    options = {"temperature": 0}
+    if seed is not None:
+        options["seed"] = seed
+    response = requests.post(
+        f"{base_url}/api/chat",
+        json={
+            "model": model_name,
+            "messages": _prompt_to_openai_messages(prompt),
+            "format": "json",
+            "stream": False,
+            "options": options,
+        },
+        timeout=120,
+    )
+    response.raise_for_status()
+    body = response.json()
+    content = body.get("message", {}).get("content", "")
+    telemetry = {
+        "system_fingerprint": None,  # Ollama doesn't return one.
+        "prompt_tokens": body.get("prompt_eval_count"),
+        "completion_tokens": body.get("eval_count"),
+        "response_content": content,
+    }
+    parsed = _extract_json_object(content)
+    if parsed is None:
+        raise ValueError(f"Ollama returned non-JSON content: {content!r}")
+    return pydantic_model.model_validate(parsed), telemetry
+
+
+def _call_json_model(
+    *,
+    prompt: object,
+    pydantic_model: type[BaseModel],
+    model_name: str,
+    model_provider: str,
+    api_keys: dict | None,
+    seed: int | None,
+) -> tuple[BaseModel, dict]:
+    """Returns (parsed_model, telemetry_dict)."""
+    provider = _provider_name(model_provider)
+    if provider in {"openai", "openrouter", "deepseek", "groq", "xai"}:
+        return _call_openai_compatible_json(
+            prompt=prompt,
+            pydantic_model=pydantic_model,
+            model_name=model_name,
+            model_provider=provider,
+            api_keys=api_keys,
+            seed=seed,
+        )
+    if provider == "azure openai":
+        return _call_azure_openai_json(
+            prompt=prompt,
+            pydantic_model=pydantic_model,
+            model_name=model_name,
+            api_keys=api_keys,
+            seed=seed,
+        )
+    if provider == "ollama":
+        return _call_ollama_json(
+            prompt=prompt,
+            pydantic_model=pydantic_model,
+            model_name=model_name,
+            seed=seed,
+        )
+    raise ValueError(
+        f"Provider {model_provider!r} has no direct adapter yet. "
+        "Use OpenAI, Azure OpenAI, OpenRouter, DeepSeek, Groq, xAI, or Ollama."
+    )
 
 
 def call_llm(
     prompt: any,
     pydantic_model: type[BaseModel],
     agent_name: str | None = None,
-    state: AgentState | None = None,
+    state: StateLike | None = None,
     max_retries: int = 3,
     default_factory=None,
+    *,
+    seed: int | None = None,
+    recorder=None,
+    ticker: str | None = None,
 ) -> BaseModel:
-    """
-    Makes an LLM call with retry logic, handling both JSON supported and non-JSON supported models.
+    """Make an LLM call with retry + structured output validation + optional recording.
 
     Args:
-        prompt: The prompt to send to the LLM
-        pydantic_model: The Pydantic model class to structure the output
-        agent_name: Optional name of the agent for progress updates and model config extraction
-        state: Optional state object to extract agent-specific model configuration
-        max_retries: Maximum number of retries (default: 3)
-        default_factory: Optional factory function to create default response on failure
+        prompt: The prompt to send.
+        pydantic_model: Pydantic model class to validate the output against.
+        agent_name: Used for progress updates and per-agent model config lookup.
+        state: Dict-like state carrying model config under metadata.
+        max_retries: Retry budget on transient failures.
+        default_factory: Builds a fallback object if all attempts fail.
+        seed: Passed to the provider for reproducibility.
+        recorder: If provided, every attempt is recorded (prompt, response,
+            fingerprint, tokens, latency, error).
+        ticker: Logged into the recorder for trace context.
 
     Returns:
-        An instance of the specified Pydantic model
+        An instance of `pydantic_model`. On total failure returns a default.
     """
-    
-    # Extract model configuration if state is provided and agent_name is available
+    import time
+
     if state and agent_name:
         model_name, model_provider = get_agent_model_config(state, agent_name)
     else:
-        # Use system defaults when no state or agent_name is provided
         model_name = "gpt-4.1"
         model_provider = "OPENAI"
 
-    # Extract API keys from state if available
     api_keys = None
     if state:
         request = state.get("metadata", {}).get("request")
         if request and hasattr(request, 'api_keys'):
             api_keys = request.api_keys
 
-    model_info = get_model_info(model_name, model_provider)
-    llm = get_model(model_name, model_provider, api_keys)
-
-    # For non-JSON support models, we can use structured output
-    if not (model_info and not model_info.has_json_mode()):
-        llm = llm.with_structured_output(
-            pydantic_model,
-            method="json_mode",
-        )
-
-    # Call the LLM with retries
     for attempt in range(max_retries):
+        t0 = time.monotonic()
+        telemetry: dict = {}
+        error: str | None = None
         try:
-            # Call the LLM
-            result = llm.invoke(prompt)
-
-            # For non-JSON support models, we need to extract and parse the JSON manually
-            if model_info and not model_info.has_json_mode():
-                parsed_result = extract_json_from_response(result.content)
-                if parsed_result:
-                    return pydantic_model(**parsed_result)
-            else:
-                return result
+            result, telemetry = _call_json_model(
+                prompt=prompt,
+                pydantic_model=pydantic_model,
+                model_name=model_name,
+                model_provider=model_provider,
+                api_keys=api_keys,
+                seed=seed,
+            )
+            latency_ms = (time.monotonic() - t0) * 1000.0
+            if recorder is not None:
+                recorder.append_llm_call(
+                    agent_id=agent_name or "unknown",
+                    ticker=ticker,
+                    model=model_name,
+                    provider=str(model_provider),
+                    prompt=prompt,
+                    response=telemetry.get("response_content", ""),
+                    seed=seed,
+                    system_fingerprint=telemetry.get("system_fingerprint"),
+                    latency_ms=latency_ms,
+                    prompt_tokens=telemetry.get("prompt_tokens"),
+                    completion_tokens=telemetry.get("completion_tokens"),
+                    attempt=attempt + 1,
+                    error=None,
+                )
+            return result
 
         except Exception as e:
+            error = str(e)
+            latency_ms = (time.monotonic() - t0) * 1000.0
+            if recorder is not None:
+                recorder.append_llm_call(
+                    agent_id=agent_name or "unknown",
+                    ticker=ticker,
+                    model=model_name,
+                    provider=str(model_provider),
+                    prompt=prompt,
+                    response=telemetry.get("response_content", ""),
+                    seed=seed,
+                    system_fingerprint=telemetry.get("system_fingerprint"),
+                    latency_ms=latency_ms,
+                    prompt_tokens=telemetry.get("prompt_tokens"),
+                    completion_tokens=telemetry.get("completion_tokens"),
+                    attempt=attempt + 1,
+                    error=error,
+                )
             if agent_name:
                 progress.update_status(agent_name, None, f"Error - retry {attempt + 1}/{max_retries}")
-
             if attempt == max_retries - 1:
                 print(f"Error in LLM call after {max_retries} attempts: {e}")
-                # Use default_factory if provided, otherwise create a basic default
                 if default_factory:
                     return default_factory()
                 return create_default_response(pydantic_model)
 
-    # This should never be reached due to the retry logic above
     return create_default_response(pydantic_model)
 
 
