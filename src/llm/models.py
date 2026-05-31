@@ -15,6 +15,7 @@ class ModelProvider(str, Enum):
     GROQ = "Groq"
     META = "Meta"
     MISTRAL = "Mistral"
+    MINIMAX = "MiniMax"
     OPENAI = "OpenAI"
     OLLAMA = "Ollama"
     OPENROUTER = "OpenRouter"

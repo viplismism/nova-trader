@@ -35,6 +35,16 @@
     "provider": "Groq"
   },
   {
+    "display_name": "MiniMax M2.7",
+    "model_name": "MiniMax-M2.7",
+    "provider": "MiniMax"
+  },
+  {
+    "display_name": "MiniMax M2.7 Highspeed",
+    "model_name": "MiniMax-M2.7-highspeed",
+    "provider": "MiniMax"
+  },
+  {
     "display_name": "GLM-4.5 Air",
     "model_name": "z-ai/glm-4.5-air",
     "provider": "OpenRouter"
