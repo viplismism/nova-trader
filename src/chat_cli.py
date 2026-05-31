@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import shlex
+import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timezone
 
@@ -61,6 +62,13 @@ class ChatSettings:
     margin_requirement: float = 0.5
 
 
+@dataclass
+class ChatEvent:
+    kind: str
+    title: str
+    body: str = ""
+
+
 def _default_start_date() -> date:
     return (datetime.now() - relativedelta(months=3)).date()
 
@@ -98,6 +106,9 @@ def _extract_tickers(text: str) -> list[str]:
         "MODEL",
         "PROVIDER",
         "AGENTS",
+        "DETAIL",
+        "DETAILS",
+        "WHY",
         "HELP",
         "EXIT",
         "QUIT",
@@ -201,6 +212,108 @@ def _field_value(obj: object, name: str, default=None):
     return getattr(obj, name, default)
 
 
+def _shorten(text: str, limit: int = 220) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 1].rstrip() + "…"
+
+
+def _recommendation_summary_text(recommendation: Recommendation) -> str:
+    lines = [
+        f"Run {recommendation.run_id}",
+        f"Summary: {recommendation.summary}",
+        "",
+        f"{'Ticker':<8} {'Consensus':<10} {'Action':<8} {'Conf':>5}  Decision",
+        "-" * 74,
+    ]
+
+    for ticker in recommendation.tickers:
+        consensus = recommendation.consensus.get(ticker)
+        decision = recommendation.decisions.per_ticker.get(ticker)
+        if not decision:
+            continue
+        consensus_text = str(_field_value(consensus, "direction", "n/a")).upper()
+        action = str(_field_value(decision, "action", "hold")).upper()
+        confidence = float(_field_value(decision, "confidence", 0.0))
+        reasoning = str(_field_value(decision, "reasoning", "") or "")
+        lines.append(f"{ticker:<8} {consensus_text:<10} {action:<8} {confidence:>4.0%}  {reasoning}")
+
+    plan = recommendation.decisions.hedge_plan
+    if plan.pairs or plan.blocked_longs:
+        lines.extend(["", f"Hedge plan: {plan.status}"])
+        for pair in plan.pairs:
+            lines.append(
+                f"  LONG {pair.long_quantity} {pair.long_ticker} vs "
+                f"SHORT {pair.short_quantity} {pair.short_ticker}"
+            )
+        if plan.blocked_longs:
+            lines.append(f"  Blocked longs: {', '.join(plan.blocked_longs)}")
+
+    lines.append("")
+    lines.append("Analyst reasoning")
+    lines.append("-" * 74)
+    for ticker in recommendation.tickers:
+        lines.append(f"{ticker}")
+        ticker_signals = [signal for signal in recommendation.signals if signal.ticker == ticker]
+        if not ticker_signals:
+            lines.append("  No analyst signals.")
+            continue
+        for signal in ticker_signals:
+            status = signal.status
+            direction = signal.direction.upper()
+            confidence = f"{signal.confidence:.0%}" if status == "ok" else status
+            reasoning = signal.error or signal.reasoning or "No reasoning supplied."
+            lines.append(
+                f"  - {signal.agent_id:<18} {direction:<8} {confidence:<9} {_shorten(reasoning)}"
+            )
+
+    ok = sum(1 for signal in recommendation.signals if signal.status == "ok")
+    abstained = sum(1 for signal in recommendation.signals if signal.status == "abstained")
+    failed = sum(1 for signal in recommendation.signals if signal.status == "failed")
+    lines.extend([
+        "",
+        f"{len(recommendation.signals)} signals: {ok} ok, {abstained} abstained, {failed} failed",
+        f"Saved: {runs_root() / recommendation.run_id}/",
+    ])
+    return "\n".join(lines)
+
+
+def _ticker_details_text(recommendation: Recommendation, ticker: str) -> str:
+    ticker = ticker.upper()
+    if ticker not in recommendation.tickers:
+        return f"{ticker} was not part of run {recommendation.run_id}."
+
+    consensus = recommendation.consensus.get(ticker)
+    decision = recommendation.decisions.per_ticker.get(ticker)
+    lines = [f"{ticker} details from run {recommendation.run_id}", ""]
+    if consensus:
+        lines.append(
+            "Consensus: "
+            f"{_field_value(consensus, 'direction', 'n/a')} "
+            f"({_field_value(consensus, 'confidence', 0.0):.0%})"
+        )
+    if decision:
+        lines.append(
+            "Decision: "
+            f"{_field_value(decision, 'action', 'hold').upper()} "
+            f"({_field_value(decision, 'confidence', 0.0):.0%})"
+        )
+        reasoning = _field_value(decision, "reasoning", "")
+        if reasoning:
+            lines.append(f"Reason: {reasoning}")
+
+    lines.extend(["", "Analyst reasoning"])
+    for signal in [s for s in recommendation.signals if s.ticker == ticker]:
+        status = signal.status
+        direction = signal.direction.upper()
+        confidence = f"{signal.confidence:.0%}" if status == "ok" else status
+        reasoning = signal.error or signal.reasoning or "No reasoning supplied."
+        lines.append(f"- {signal.agent_id}: {direction} {confidence}")
+        lines.append(f"  {_shorten(reasoning, 420)}")
+    return "\n".join(lines)
+
+
 def _render_recommendation(console: Console, recommendation: Recommendation) -> None:
     console.print()
     console.print(
@@ -271,43 +384,284 @@ class NovaChat:
         self.settings = settings
         self.last_run_id: str | None = None
         self.last_recommendation: Recommendation | None = None
+        self._app = None
+        self._transcript_area = None
+        self._status_area = None
+        self._input_area = None
+        self._header_area = None
+        self._transcript: list[str] = []
+        self._status_lines: dict[str, str] = {}
+        self._busy = False
+        self._ui_lock = threading.Lock()
 
     def run(self) -> int:
         try:
-            from prompt_toolkit import PromptSession
-            from prompt_toolkit.formatted_text import HTML
+            from prompt_toolkit.application import Application
+            from prompt_toolkit.key_binding import KeyBindings
+            from prompt_toolkit.layout import HSplit, Layout, VSplit, Window
+            from prompt_toolkit.layout.controls import FormattedTextControl
+            from prompt_toolkit.styles import Style
+            from prompt_toolkit.widgets import Frame, TextArea
         except ImportError:
             self.console.print("[red]Chat CLI requires prompt_toolkit. Run `uv pip install -e .`.[/red]")
             return 2
 
-        self._print_header()
-        session = PromptSession()
+        self._transcript_area = TextArea(
+            text="",
+            read_only=True,
+            scrollbar=True,
+            wrap_lines=True,
+            focusable=False,
+        )
+        self._status_area = TextArea(
+            text="",
+            read_only=True,
+            scrollbar=True,
+            wrap_lines=True,
+            focusable=False,
+        )
+        self._input_area = TextArea(
+            height=3,
+            prompt="nova › ",
+            multiline=False,
+            wrap_lines=False,
+        )
 
-        while True:
-            try:
-                prompt = HTML("<ansiteal>nova</ansiteal> <ansiblue>›</ansiblue> ")
-                text = session.prompt(prompt).strip()
-            except (EOFError, KeyboardInterrupt):
-                self.console.print()
-                return 0
+        def submit(buffer):
+            text = buffer.text.strip()
+            buffer.reset()
+            if text:
+                self._dispatch_tui(text)
+            return True
 
-            if not text:
-                continue
-            exit_code = self.handle(text)
-            if exit_code is not None:
-                return exit_code
+        self._input_area.buffer.accept_handler = submit
+        self._header_area = Window(
+            FormattedTextControl(lambda: self._header_fragments()),
+            height=3,
+            style="class:header",
+        )
+
+        footer = Window(
+            FormattedTextControl(
+                " Enter submit   Ctrl-C/Ctrl-D exit   commands: analyze AAPL,NVDA | model MiniMax MiniMax-M2.7 | show last | help "
+            ),
+            height=1,
+            style="class:footer",
+        )
+
+        root = HSplit(
+            [
+                self._header_area,
+                VSplit(
+                    [
+                        Frame(self._transcript_area, title="Transcript"),
+                        Frame(self._status_area, title="Run Status", width=42),
+                    ],
+                    padding=1,
+                ),
+                Frame(self._input_area, title="Message"),
+                footer,
+            ]
+        )
+
+        bindings = KeyBindings()
+
+        @bindings.add("c-c")
+        @bindings.add("c-d")
+        def _(event):
+            event.app.exit(result=0)
+
+        style = Style.from_dict(
+            {
+                "header": "bg:#111111 #7fbbb3 bold",
+                "footer": "bg:#111111 #888888",
+                "frame.border": "#7fbbb3",
+                "frame.label": "#7fbbb3 bold",
+            }
+        )
+
+        self._app = Application(
+            layout=Layout(root, focused_element=self._input_area),
+            key_bindings=bindings,
+            full_screen=True,
+            mouse_support=True,
+            style=style,
+        )
+        self._emit(ChatEvent("assistant", "Ready", "Ask for a recommendation or change the run settings. Try `analyze AAPL,NVDA` or `help`."))
+        self._refresh_tui()
+        return int(self._app.run() or 0)
+
+    def _header_fragments(self):
+        busy = "running" if self._busy else "ready"
+        agents = "default analyst set" if self.settings.agents == DEFAULT_AGENTS else ",".join(self.settings.agents)
+        return [
+            ("class:header", "  ◆ Nova Trader  "),
+            ("#888888", "chat workspace\n"),
+            ("#aaaaaa", f"  model "),
+            ("#ffffff bold", f"{self.settings.provider} / {self.settings.model}"),
+            ("#aaaaaa", "   agents "),
+            ("#ffffff", agents[:48]),
+            ("#aaaaaa", "   status "),
+            ("#a7c080 bold" if not self._busy else "#dbbc7f bold", busy),
+        ]
+
+    def _emit(self, event: ChatEvent) -> None:
+        with self._ui_lock:
+            if event.kind == "tool":
+                self._status_lines[event.title] = event.body
+            else:
+                prefix = {
+                    "user": "You",
+                    "assistant": "Nova",
+                    "result": "Recommendation",
+                    "error": "Error",
+                    "system": "System",
+                }.get(event.kind, event.kind.title())
+                block = f"{prefix}: {event.title}"
+                if event.body:
+                    block += f"\n{event.body}"
+                self._transcript.append(block)
+        self._refresh_tui()
+
+    def _refresh_tui(self) -> None:
+        if not self._app or not self._transcript_area or not self._status_area:
+            return
+        from prompt_toolkit.document import Document
+
+        with self._ui_lock:
+            transcript = "\n\n".join(self._transcript[-80:])
+            status = self._status_text()
+        self._transcript_area.buffer.set_document(Document(transcript, cursor_position=len(transcript)), bypass_readonly=True)
+        self._status_area.buffer.set_document(Document(status, cursor_position=len(status)), bypass_readonly=True)
+        self._app.invalidate()
+
+    def _status_text(self) -> str:
+        lines = [
+            f"Model: {self.settings.provider}",
+            f"Name:  {self.settings.model}",
+            f"Last:  {self.last_run_id or 'none'}",
+            "",
+        ]
+        if self._busy:
+            lines.append("Run: running")
+        else:
+            lines.append("Run: ready")
+        lines.append("")
+        if not self._status_lines:
+            lines.append("No active tool events.")
+        else:
+            for label, status in list(self._status_lines.items())[-28:]:
+                marker = "✓" if status.lower() == "done" else "•"
+                lines.append(f"{marker} {label}\n  {status}")
+        return "\n".join(lines)
+
+    def _dispatch_tui(self, text: str) -> None:
+        if self._busy:
+            self._emit(ChatEvent("system", "A run is already in progress.", "Wait for it to finish before sending another command."))
+            return
+
+        lower = text.lower().strip()
+        if lower in {"exit", "quit", "/exit", "/quit"}:
+            if self._app:
+                self._app.exit(result=0)
+            return
+
+        self._emit(ChatEvent("user", text))
+        tickers = _extract_tickers(text)
+
+        if lower in {"help", "/help", "?"}:
+            self._emit(ChatEvent("assistant", "Available commands", self._help_text()))
+            return
+        if lower in {"hi", "hello", "hey", "yo"}:
+            self._emit(ChatEvent("assistant", "Hi.", self._intro_text()))
+            return
+        if lower in {"status", "/status", "settings", "/settings"}:
+            self._emit(ChatEvent("assistant", "Current settings", self._settings_text()))
+            return
+        if tickers and lower.startswith(("details", "detail", "why", "explain")):
+            self._emit_ticker_details(tickers[0])
+            return
+        if lower.startswith(("explain", "what is", "what are", "how does")):
+            self._emit(ChatEvent("assistant", "How Nova works", self._product_explanation_text()))
+            return
+        if lower.startswith(("what's", "whats", "what is this", "what's this")):
+            self._emit(ChatEvent("assistant", "What this is", self._product_explanation_text()))
+            return
+        if lower.startswith(("model ", "/model ", "use model ", "use ")):
+            self._set_model_from_command(text, emit_to_tui=True)
+            return
+        if lower.startswith(("agents ", "/agents ")):
+            self._set_agents_from_command(text, emit_to_tui=True)
+            return
+        if lower in {"show last", "/show last"}:
+            if self.last_run_id:
+                self._show_run_tui(self.last_run_id)
+            else:
+                self._emit(ChatEvent("assistant", "No previous run in this session."))
+            return
+        if lower.startswith(("show ", "/show ")):
+            self._show_run_tui(text.split(" ", 1)[1].strip())
+            return
+        if lower in {"rerun last", "/rerun last"}:
+            if self.last_run_id:
+                self._run_in_thread("rerun", [self.last_run_id])
+            else:
+                self._emit(ChatEvent("assistant", "No previous run in this session."))
+            return
+        if lower.startswith(("rerun ", "/rerun ")):
+            self._run_in_thread("rerun", [text.split(" ", 1)[1].strip()])
+            return
+
+        if tickers and _is_analysis_prompt(text):
+            self._run_in_thread("analyze", tickers)
+            return
+
+        self._emit(
+            ChatEvent(
+                "assistant",
+                "I can help with Nova recommendations.",
+                self._intro_text(),
+            )
+        )
+
+    def _run_in_thread(self, mode: str, values: list[str]) -> None:
+        self._busy = True
+        self._status_lines.clear()
+        self._refresh_tui()
+        thread = threading.Thread(target=self._run_worker, args=(mode, values), daemon=True)
+        thread.start()
+
+    def _run_worker(self, mode: str, values: list[str]) -> None:
+        try:
+            if mode == "analyze":
+                self._analyze_tui(values)
+            elif mode == "rerun":
+                self._rerun_tui(values[0])
+        finally:
+            self._busy = False
+            self._refresh_tui()
 
     def handle(self, text: str) -> int | None:
         lower = text.lower().strip()
+        tickers = _extract_tickers(text)
         if lower in {"exit", "quit", "/exit", "/quit"}:
             return 0
         if lower in {"help", "/help", "?"}:
             self._print_help()
             return None
+        if lower in {"hi", "hello", "hey", "yo"}:
+            self.console.print(self._intro_text())
+            return None
         if lower in {"status", "/status", "settings", "/settings"}:
             self._print_settings()
             return None
+        if tickers and lower.startswith(("details", "detail", "why", "explain")):
+            self._print_ticker_details(tickers[0])
+            return None
         if lower.startswith(("explain", "what is", "what are", "how does")):
+            self._print_product_explanation()
+            return None
+        if lower.startswith(("what's", "whats", "what is this", "what's this")):
             self._print_product_explanation()
             return None
         if lower.startswith(("model ", "/model ", "use model ", "use ")):
@@ -335,16 +689,140 @@ class NovaChat:
             self._handle_rerun(text)
             return None
 
-        tickers = _extract_tickers(text)
         if tickers and _is_analysis_prompt(text):
             self._analyze(tickers)
             return None
 
-        self.console.print(
-            f"[{AMBER}]I need one or more tickers. Try `analyze AAPL,NVDA`, "
-            "`model MiniMax MiniMax-M2.7`, or `help`.[/{AMBER}]"
-        )
+        self.console.print(self._intro_text())
         return None
+
+    def _help_text(self) -> str:
+        return "\n".join(
+            [
+                "analyze AAPL,NVDA          run a recommendation",
+                "details AAPL               show analyst reasoning from the last run",
+                "explain NVDA               explain a ticker decision from the last run",
+                "show <run_id>              print a saved recommendation",
+                "show last                  print the last run from this session",
+                "rerun <run_id>             replay a saved run snapshot",
+                "model MiniMax MiniMax-M2.7 switch provider/model",
+                "agents technical,valuation choose analyst agents",
+                "status                     show current model and agents",
+                "exit                       close Nova",
+            ]
+        )
+
+    def _intro_text(self) -> str:
+        return "\n".join(
+            [
+                "This is Nova Trader, a portfolio-aware recommendation agent.",
+                "Ask `analyze AAPL,NVDA` to run the analyst pipeline.",
+                "After a run, ask `details AAPL` or `explain NVDA` to inspect the reasoning.",
+                "Use `model MiniMax MiniMax-M2.7`, `agents technical,valuation`, or `help` to control the workspace.",
+            ]
+        )
+
+    def _product_explanation_text(self) -> str:
+        return "\n".join(
+            [
+                "Nova is a portfolio-aware recommendation agent.",
+                "",
+                "A run builds one market snapshot, slices typed views for analyst agents,",
+                "aggregates their signals, applies risk limits, and then asks the portfolio",
+                "manager for a hedged decision.",
+                "",
+                "The transcript shows the conversation and final decision. The status pane",
+                "shows live tool and analyst progress while a run is active.",
+                "",
+                "Use `analyze AAPL,NVDA` to run it, `details AAPL` to inspect reasoning,",
+                "`model MiniMax MiniMax-M2.7` to switch models, and `show last` to inspect",
+                "the latest recommendation.",
+            ]
+        )
+
+    def _settings_text(self) -> str:
+        agent_label = "default analyst set" if self.settings.agents == DEFAULT_AGENTS else ",".join(self.settings.agents)
+        return "\n".join(
+            [
+                f"provider: {self.settings.provider}",
+                f"model:    {self.settings.model}",
+                f"agents:   {agent_label}",
+                f"last run: {self.last_run_id or 'none'}",
+            ]
+        )
+
+    def _set_model_from_command(self, text: str, *, emit_to_tui: bool = False) -> tuple[str, str]:
+        cleaned = text.strip()
+        for prefix in ("/model", "model", "use model", "use"):
+            if cleaned.lower().startswith(prefix):
+                cleaned = cleaned[len(prefix):].strip()
+                break
+        if not cleaned:
+            message = f"Available providers: {_provider_choices()}"
+            if emit_to_tui:
+                self._emit(ChatEvent("assistant", message))
+            else:
+                self.console.print(f"[{ASH}]{message}[/{ASH}]")
+            return self.settings.provider, self.settings.model
+
+        parts = shlex.split(cleaned)
+        provider = _normalize_provider(parts[0])
+        if provider == "Azure" and len(parts) > 1 and parts[1].lower() == "openai":
+            provider = "Azure OpenAI"
+            parts = parts[1:]
+        model = parts[1] if len(parts) > 1 else None
+        choices = _model_choices_for(provider)
+        if not model:
+            model = choices[0] if choices else self.settings.model
+        self.settings.provider = provider
+        self.settings.model = model
+
+        body = f"Model set to {provider} / {model}"
+        if choices:
+            body += f"\nKnown models: {', '.join(choices)}"
+        if emit_to_tui:
+            self._emit(ChatEvent("assistant", "Model updated", body))
+        else:
+            self.console.print(f"[{SAGE}]Model set to {escape(provider)} / {escape(model)}[/{SAGE}]", highlight=False)
+            if choices:
+                self.console.print(f"[{ASH}]Known models: {escape(', '.join(choices))}[/{ASH}]", highlight=False)
+        self._refresh_tui()
+        return provider, model
+
+    def _set_agents_from_command(self, text: str, *, emit_to_tui: bool = False) -> list[str]:
+        cleaned = text.split(" ", 1)[1] if " " in text else ""
+        agents = [agent.strip() for agent in cleaned.split(",") if agent.strip()]
+        if not agents:
+            self.settings.agents = DEFAULT_AGENTS.copy()
+            message = "Agents reset to default."
+        else:
+            self.settings.agents = agents
+            message = f"Agents set to {','.join(agents)}"
+
+        if emit_to_tui:
+            self._emit(ChatEvent("assistant", "Agents updated", message))
+        else:
+            self.console.print(f"[{SAGE}]{escape(message)}[/{SAGE}]", highlight=False)
+        self._refresh_tui()
+        return self.settings.agents
+
+    def _emit_ticker_details(self, ticker: str) -> None:
+        if not self.last_recommendation:
+            self._emit(
+                ChatEvent(
+                    "assistant",
+                    "No recommendation loaded.",
+                    "Run `analyze AAPL,NVDA` first, or use `show <run_id>` to load a saved run.",
+                )
+            )
+            return
+        self._emit(ChatEvent("assistant", f"Details for {ticker.upper()}", _ticker_details_text(self.last_recommendation, ticker)))
+
+    def _print_ticker_details(self, ticker: str) -> None:
+        if not self.last_recommendation:
+            self.console.print(f"[{AMBER}]No recommendation loaded. Run analyze first or show a saved run.[/{AMBER}]")
+            return
+        self.console.print(_ticker_details_text(self.last_recommendation, ticker))
 
     def _print_header(self) -> None:
         title = Text()
@@ -368,18 +846,7 @@ class NovaChat:
     def _print_help(self) -> None:
         self.console.print(
             Panel(
-                "\n".join(
-                    [
-                        "[bold]analyze AAPL,NVDA[/bold]       run a recommendation",
-                        "[bold]show <run_id>[/bold]           print a saved recommendation",
-                        "[bold]show last[/bold]               print the last run from this session",
-                        "[bold]rerun <run_id>[/bold]          replay a saved run snapshot",
-                        "[bold]model MiniMax MiniMax-M2.7[/bold]  switch provider/model",
-                        "[bold]agents technical,valuation[/bold] choose analyst agents",
-                        "[bold]status[/bold]                  show current model and agents",
-                        "[bold]exit[/bold]                    close Nova",
-                    ]
-                ),
+                self._help_text(),
                 title="Commands",
                 border_style=TEAL,
                 padding=(1, 2),
@@ -389,18 +856,7 @@ class NovaChat:
     def _print_product_explanation(self) -> None:
         self.console.print(
             Panel(
-                "\n".join(
-                    [
-                        "Nova is a portfolio-aware recommendation agent.",
-                        "",
-                        "A run builds one market snapshot, slices typed views for analyst agents,",
-                        "aggregates their signals, applies risk limits, and then asks the portfolio",
-                        "manager for a hedged decision.",
-                        "",
-                        "Use `analyze AAPL,NVDA` to run it, `model MiniMax MiniMax-M2.7` to switch",
-                        "models, and `show last` to inspect the latest recommendation.",
-                    ]
-                ),
+                self._product_explanation_text(),
                 title="How Nova Works",
                 border_style=TEAL,
                 padding=(1, 2),
@@ -408,13 +864,9 @@ class NovaChat:
         )
 
     def _print_settings(self) -> None:
-        agent_label = "default analyst set" if self.settings.agents == DEFAULT_AGENTS else ",".join(self.settings.agents)
         self.console.print(
             Panel(
-                f"[{ASH}]provider[/{ASH}] {escape(self.settings.provider)}\n"
-                f"[{ASH}]model[/{ASH}] {escape(self.settings.model)}\n"
-                f"[{ASH}]agents[/{ASH}] {escape(agent_label)}\n"
-                f"[{ASH}]last run[/{ASH}] {escape(self.last_run_id or 'none')}",
+                escape(self._settings_text()),
                 title="Settings",
                 border_style=TEAL,
                 padding=(1, 2),
@@ -422,39 +874,10 @@ class NovaChat:
         )
 
     def _handle_model(self, text: str) -> None:
-        cleaned = text.strip()
-        for prefix in ("/model", "model", "use model", "use"):
-            if cleaned.lower().startswith(prefix):
-                cleaned = cleaned[len(prefix):].strip()
-                break
-        if not cleaned:
-            self.console.print(f"[{ASH}]Available providers: {_provider_choices()}[/{ASH}]")
-            return
-
-        parts = shlex.split(cleaned)
-        provider = _normalize_provider(parts[0])
-        if provider == "Azure" and len(parts) > 1 and parts[1].lower() == "openai":
-            provider = "Azure OpenAI"
-            parts = parts[1:]
-        model = parts[1] if len(parts) > 1 else None
-        choices = _model_choices_for(provider)
-        if not model:
-            model = choices[0] if choices else self.settings.model
-        self.settings.provider = provider
-        self.settings.model = model
-        self.console.print(f"[{SAGE}]Model set to {escape(provider)} / {escape(model)}[/{SAGE}]", highlight=False)
-        if choices:
-            self.console.print(f"[{ASH}]Known models: {escape(', '.join(choices))}[/{ASH}]", highlight=False)
+        self._set_model_from_command(text)
 
     def _handle_agents(self, text: str) -> None:
-        cleaned = text.split(" ", 1)[1] if " " in text else ""
-        agents = [agent.strip() for agent in cleaned.split(",") if agent.strip()]
-        if not agents:
-            self.settings.agents = DEFAULT_AGENTS.copy()
-            self.console.print(f"[{SAGE}]Agents reset to default.[/{SAGE}]", highlight=False)
-            return
-        self.settings.agents = agents
-        self.console.print(f"[{SAGE}]Agents set to {escape(','.join(agents))}[/{SAGE}]", highlight=False)
+        self._set_agents_from_command(text)
 
     def _handle_show(self, text: str) -> None:
         run_id = text.split(" ", 1)[1].strip()
@@ -473,6 +896,11 @@ class NovaChat:
         scope = f" [{ticker}]" if ticker else ""
         color = SAGE if status.lower() == "done" else ASH
         self.console.print(f"[{color}]tool[/{color}] {escape(label)}{escape(scope)}: {escape(status)}")
+
+    def _progress_handler_tui(self, agent_name: str, ticker: str | None, status: str, *_) -> None:
+        label = agent_name.replace("_", " ").title()
+        scope = f" [{ticker}]" if ticker else ""
+        self._emit(ChatEvent("tool", f"{label}{scope}", status))
 
     def _analyze(self, tickers: list[str]) -> None:
         self.console.print()
@@ -500,6 +928,34 @@ class NovaChat:
         self.last_recommendation = recommendation
         _render_recommendation(self.console, recommendation)
 
+    def _analyze_tui(self, tickers: list[str]) -> None:
+        self._emit(
+            ChatEvent(
+                "assistant",
+                f"Analyzing {','.join(tickers)}",
+                f"Building a market snapshot and running {len(self.settings.agents)} agents with "
+                f"{self.settings.provider} / {self.settings.model}.",
+            )
+        )
+
+        ctx = _build_context(tickers, self.settings)
+        progress.register_handler(self._progress_handler_tui)
+        try:
+            recommendation = run_engine(
+                ctx,
+                selected_agents=ctx.request.selected_agents or None,
+                record=True,
+            )
+        except Exception as exc:
+            self._emit(ChatEvent("error", "Run failed", str(exc)))
+            return
+        finally:
+            progress.unregister_handler(self._progress_handler_tui)
+
+        self.last_run_id = recommendation.run_id
+        self.last_recommendation = recommendation
+        self._emit(ChatEvent("result", f"Run {recommendation.run_id}", _recommendation_summary_text(recommendation)))
+
     def _show_run(self, run_id: str) -> None:
         if not RunRecorder.exists(run_id):
             self.console.print(f"[{ROSE}]No run found at {runs_root() / run_id}[/{ROSE}]")
@@ -512,6 +968,19 @@ class NovaChat:
         self.last_run_id = run_id
         self.last_recommendation = recommendation
         _render_recommendation(self.console, recommendation)
+
+    def _show_run_tui(self, run_id: str) -> None:
+        if not RunRecorder.exists(run_id):
+            self._emit(ChatEvent("error", "Run not found", str(runs_root() / run_id)))
+            return
+        try:
+            recommendation = Recommendation.model_validate(RunRecorder.load_recommendation_dict(run_id))
+        except FileNotFoundError:
+            self._emit(ChatEvent("error", f"Run {run_id} has no recommendation.json."))
+            return
+        self.last_run_id = run_id
+        self.last_recommendation = recommendation
+        self._emit(ChatEvent("result", f"Run {recommendation.run_id}", _recommendation_summary_text(recommendation)))
 
     def _rerun(self, run_id: str) -> None:
         if not RunRecorder.exists(run_id):
@@ -537,6 +1006,31 @@ class NovaChat:
         self.last_run_id = recommendation.run_id
         self.last_recommendation = recommendation
         _render_recommendation(self.console, recommendation)
+
+    def _rerun_tui(self, run_id: str) -> None:
+        if not RunRecorder.exists(run_id):
+            self._emit(ChatEvent("error", "Run not found", str(runs_root() / run_id)))
+            return
+        self._emit(ChatEvent("assistant", f"Replaying saved snapshot {run_id}."))
+        meta = RunRecorder.load_metadata(run_id)
+        ctx, snapshot = _build_context_from_metadata(meta)
+        progress.register_handler(self._progress_handler_tui)
+        try:
+            recommendation = run_engine(
+                ctx,
+                selected_agents=ctx.request.selected_agents or None,
+                snapshot=snapshot,
+                record=True,
+            )
+        except Exception as exc:
+            self._emit(ChatEvent("error", "Rerun failed", str(exc)))
+            return
+        finally:
+            progress.unregister_handler(self._progress_handler_tui)
+
+        self.last_run_id = recommendation.run_id
+        self.last_recommendation = recommendation
+        self._emit(ChatEvent("result", f"Run {recommendation.run_id}", _recommendation_summary_text(recommendation)))
 
 
 def launch_chat(console: Console, provider: str, model: str) -> int:
