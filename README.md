@@ -66,8 +66,12 @@ MODEL_NAME=MiniMax-M2.7
 Run a recommendation:
 
 ```bash
+poetry run nova
 poetry run nova run --tickers AAPL,NVDA,TSLA
 ```
+
+Running `nova` without arguments opens the interactive CLI. The explicit
+`nova run/show/rerun` commands remain available for scripts and repeatable demos.
 
 Run a smaller deterministic-agent demo plus the Buffett LLM persona:
 

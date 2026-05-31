@@ -47,6 +47,14 @@ SYM_DIAMOND = "◆"
 console = Console()
 
 
+def _default_start_date() -> str:
+    return (datetime.now() - relativedelta(months=3)).strftime("%Y-%m-%d")
+
+
+def _default_end_date() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="nova", description="Nova Trader — recommendation engine")
     sub = p.add_subparsers(dest="command", required=True, metavar="<command>")
@@ -56,12 +64,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     run.add_argument("--tickers", required=True, help="Comma-separated, e.g. AAPL,NVDA")
     run.add_argument(
         "--start-date",
-        default=(datetime.now() - relativedelta(months=3)).strftime("%Y-%m-%d"),
+        default=_default_start_date(),
         help="YYYY-MM-DD (default: 3 months ago)",
     )
     run.add_argument(
         "--end-date",
-        default=datetime.now().strftime("%Y-%m-%d"),
+        default=_default_end_date(),
         help="YYYY-MM-DD (default: today)",
     )
     run.add_argument("--initial-cash", type=float, default=100_000.0)
@@ -89,6 +97,115 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     rerun.add_argument("--no-progress", action="store_true")
 
     return p
+
+
+def _model_choices_for(provider: str) -> list[str]:
+    try:
+        from src.llm.models import AVAILABLE_MODELS, OLLAMA_MODELS
+    except Exception:
+        return []
+
+    models = AVAILABLE_MODELS + OLLAMA_MODELS
+    return [
+        m.model_name
+        for m in models
+        if m.provider.value.lower() == provider.lower() and m.model_name
+    ]
+
+
+def _ask_text(questionary, message: str, default: str = "") -> str | None:
+    answer = questionary.text(message, default=default).ask()
+    if answer is None:
+        return None
+    return answer.strip()
+
+
+def _cmd_interactive() -> int:
+    try:
+        import questionary
+    except ImportError:
+        console.print("[red]Interactive CLI requires questionary. Run `uv pip install -e .`.[/red]")
+        return 2
+
+    console.print()
+    console.print(f"  {SYM_DIAMOND} Nova Trader", style=f"bold {TEAL}")
+    console.print(f"  [{ASH}]Recommendation engine CLI[/{ASH}]")
+    console.print()
+
+    action = questionary.select(
+        "What do you want to do?",
+        choices=[
+            questionary.Choice("Run recommendation", value="run"),
+            questionary.Choice("Show saved run", value="show"),
+            questionary.Choice("Rerun saved run", value="rerun"),
+            questionary.Choice("Exit", value="exit"),
+        ],
+    ).ask()
+
+    if action in (None, "exit"):
+        return 0
+
+    if action == "run":
+        tickers = _ask_text(questionary, "Tickers", default="AAPL,NVDA")
+        if not tickers:
+            console.print("[red]Tickers are required.[/red]")
+            return 2
+
+        provider = questionary.select(
+            "Model provider",
+            choices=[
+                "OpenAI",
+                "MiniMax",
+                "DeepSeek",
+                "Groq",
+                "xAI",
+                "OpenRouter",
+                "Azure OpenAI",
+                "Ollama",
+            ],
+            default=os.getenv("MODEL_PROVIDER", "OpenAI"),
+        ).ask()
+        if provider is None:
+            return 0
+
+        model_choices = _model_choices_for(provider)
+        default_model = os.getenv("MODEL_NAME") or (model_choices[0] if model_choices else "gpt-4.1")
+        if model_choices:
+            model_name = questionary.select("Model", choices=model_choices, default=default_model).ask()
+        else:
+            model_name = _ask_text(questionary, "Model", default=default_model)
+        if not model_name:
+            return 0
+
+        agents_default = "technical,fundamentals,growth,valuation,news_sentiment,insider_sentiment,warren_buffett"
+        agents = _ask_text(questionary, "Agents (comma-separated, blank for all)", default=agents_default)
+        start_date = _ask_text(questionary, "Start date", default=_default_start_date())
+        end_date = _ask_text(questionary, "End date", default=_default_end_date())
+        initial_cash = _ask_text(questionary, "Initial cash", default="100000")
+
+        args = argparse.Namespace(
+            tickers=tickers,
+            start_date=start_date or _default_start_date(),
+            end_date=end_date or _default_end_date(),
+            initial_cash=float(initial_cash or "100000"),
+            margin_requirement=0.5,
+            agents=agents or "",
+            model_name=model_name,
+            model_provider=provider,
+            seed=None,
+            json=False,
+            no_progress=False,
+            no_record=False,
+        )
+        return _cmd_run(args)
+
+    run_id = _ask_text(questionary, "Run id")
+    if not run_id:
+        return 0
+    args = argparse.Namespace(run_id=run_id, json=False, no_progress=False)
+    if action == "show":
+        return _cmd_show(args)
+    return _cmd_rerun(args)
 
 
 def _build_context_for_run(args: argparse.Namespace) -> RunContext:
@@ -411,8 +528,16 @@ def _cmd_rerun(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
+    raw_argv = sys.argv[1:] if argv is None else argv
+    if not raw_argv:
+        if sys.stdin.isatty():
+            return _cmd_interactive()
+        parser = _build_arg_parser()
+        parser.print_help()
+        return 2
+
     parser = _build_arg_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(raw_argv)
 
     if args.command == "run":
         return _cmd_run(args)
