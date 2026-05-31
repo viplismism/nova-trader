@@ -63,15 +63,28 @@ MODEL_PROVIDER=MiniMax
 MODEL_NAME=MiniMax-M2.7
 ```
 
-Run a recommendation:
+Open the chat-style agent CLI:
 
 ```bash
 poetry run nova
-poetry run nova run --tickers AAPL,NVDA,TSLA
 ```
 
-Running `nova` without arguments opens the interactive CLI. The explicit
-`nova run/show/rerun` commands remain available for scripts and repeatable demos.
+Inside the chat, use plain commands:
+
+```text
+analyze AAPL,NVDA
+model MiniMax MiniMax-M2.7
+agents technical,valuation,warren_buffett
+show last
+rerun <run_id>
+help
+```
+
+The explicit commands remain available for scripts and repeatable demos:
+
+```bash
+poetry run nova run --tickers AAPL,NVDA,TSLA
+```
 
 Run a smaller deterministic-agent demo plus the Buffett LLM persona:
 
