@@ -8,6 +8,7 @@ import time
 logger = logging.getLogger(__name__)
 
 from src.data.cache import get_cache
+from src.utils.progress import current_fetch_owner, progress
 from src.data.models import (
     CompanyNews,
     CompanyNewsResponse,
@@ -63,6 +64,7 @@ def _make_api_request(url: str, headers: dict, method: str = "GET", json_data: d
 
 def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
     """Fetch price data from cache or API."""
+    progress.record_fetch(current_fetch_owner.get(), "prices")
     # Create a cache key that includes all parameters to ensure exact matches
     cache_key = f"{ticker}_{start_date}_{end_date}"
     
@@ -113,6 +115,7 @@ def get_financial_metrics(
     api_key: str = None,
 ) -> list[FinancialMetrics]:
     """Fetch financial metrics from cache or API."""
+    progress.record_fetch(current_fetch_owner.get(), "financials")
     # Create a cache key that includes all parameters to ensure exact matches
     cache_key = f"{ticker}_{period}_{end_date}_{limit}"
     
@@ -164,6 +167,7 @@ def search_line_items(
     api_key: str = None,
 ) -> list[LineItem]:
     """Fetch line items from API."""
+    progress.record_fetch(current_fetch_owner.get(), "line_items")
     # If not in cache or insufficient data, fetch from API
     headers = {}
     financial_api_key = api_key or os.environ.get("FINANCIAL_DATASETS_API_KEY")
@@ -205,6 +209,7 @@ def get_insider_trades(
     api_key: str = None,
 ) -> list[InsiderTrade]:
     """Fetch insider trades from cache or API."""
+    progress.record_fetch(current_fetch_owner.get(), "insider")
     # Create a cache key that includes all parameters to ensure exact matches
     cache_key = f"{ticker}_{start_date or 'none'}_{end_date}_{limit}"
     
@@ -275,6 +280,7 @@ def get_company_news(
     api_key: str = None,
 ) -> list[CompanyNews]:
     """Fetch company news from cache or API."""
+    progress.record_fetch(current_fetch_owner.get(), "news")
     # Create a cache key that includes all parameters to ensure exact matches
     cache_key = f"{ticker}_{start_date or 'none'}_{end_date}_{limit}"
     
@@ -343,6 +349,9 @@ def get_market_cap(
     api_key: str = None,
 ) -> float | None:
     """Fetch market cap from the API."""
+    # For non-today dates this falls through to get_financial_metrics, which records
+    # its own "financials" fetch — so market cap can count as 2. That mirrors real I/O.
+    progress.record_fetch(current_fetch_owner.get(), "market_cap")
     # Check if end_date is today
     if end_date == datetime.datetime.now().strftime("%Y-%m-%d"):
         # Get the market cap from company facts API

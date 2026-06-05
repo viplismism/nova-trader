@@ -37,6 +37,9 @@ class Signal(BaseModel):
     reasoning: str = ""
     key_factors: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
+    # LLM explain-only narration over the deterministic numbers. Verdict-immutable:
+    # never set by Signal.failed/abstained and never affects direction/confidence.
+    explain_reasoning: str = ""
     status: SignalStatus = "ok"
     error: str | None = None
 
@@ -158,3 +161,7 @@ class Recommendation(BaseModel):
     limits: Limits = Field(default_factory=Limits)
     decisions: Decisions = Field(default_factory=Decisions)
     summary: str = ""
+    # Explain-only council narratives — how the risk + portfolio managers reasoned
+    # over all the analyst signals. Verdict-immutable; empty when /reasoning is off.
+    risk_reasoning: str = ""
+    portfolio_reasoning: str = ""

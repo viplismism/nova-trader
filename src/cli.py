@@ -81,6 +81,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--model-name", default=os.getenv("MODEL_NAME", "gpt-4.1"))
     run.add_argument("--model-provider", default=os.getenv("MODEL_PROVIDER", "OpenAI"))
+    run.add_argument(
+        "--portfolio-mode",
+        choices=["research", "long_only", "long_short"],
+        default=os.getenv("NOVA_PORTFOLIO_MODE", "research"),
+        help="research shows direct recommendations; long_short requires a short hedge for opening buys",
+    )
     run.add_argument("--seed", type=int, default=None, help="Override the LLM seed (default: derived from run_id)")
     run.add_argument("--json", action="store_true", help="Print the full Recommendation as JSON")
     run.add_argument("--no-progress", action="store_true")
@@ -119,6 +125,7 @@ def _build_context_for_run(args: argparse.Namespace) -> RunContext:
         end_date=date.fromisoformat(args.end_date),
         portfolio=portfolio,
         model=ModelConfig(provider=args.model_provider, name=args.model_name),
+        portfolio_mode=args.portfolio_mode,
         selected_agents=[a.strip() for a in args.agents.split(",") if a.strip()],
     )
     return RunContext(
@@ -146,6 +153,7 @@ def _build_context_from_metadata(meta: dict) -> tuple[RunContext, MarketSnapshot
             realized_gains={t: RealizedGains() for t in meta["tickers"]},
         ),
         "model": ModelConfig(**meta["model"]),
+        "portfolio_mode": meta.get("portfolio_mode", "research"),
         "selected_agents": meta.get("selected_agents", []),
     }
     request = RunRequest(**req_data)
@@ -427,6 +435,7 @@ def main(argv: list[str] | None = None) -> int:
                 console,
                 provider=os.getenv("MODEL_PROVIDER", "OpenAI"),
                 model=os.getenv("MODEL_NAME", "gpt-4.1"),
+                portfolio_mode=os.getenv("NOVA_PORTFOLIO_MODE", "research"),
             )
         parser = _build_arg_parser()
         parser.print_help()

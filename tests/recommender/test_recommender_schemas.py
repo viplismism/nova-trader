@@ -66,11 +66,26 @@ def test_agent_opinion_normalizes_ticker_and_signal():
     assert opinion.signal == "bullish"
 
 
-def test_buy_recommendation_requires_short_hedge():
+def test_research_buy_recommendation_does_not_require_short_hedge():
+    result = RecommendationResult(
+        ticker="nvda",
+        action=RecommendationAction.BUY,
+        conviction=Conviction.MEDIUM,
+        confidence=0.68,
+        horizon=TimeHorizon.MEDIUM_TERM,
+        summary="Positive growth setup.",
+    )
+
+    assert result.portfolio_mode == "research"
+    assert result.hedge is None
+
+
+def test_long_short_buy_recommendation_requires_short_hedge():
     with pytest.raises(ValueError, match="short hedge"):
         RecommendationResult(
             ticker="nvda",
             action=RecommendationAction.BUY,
+            portfolio_mode="long_short",
             conviction=Conviction.MEDIUM,
             confidence=0.68,
             horizon=TimeHorizon.MEDIUM_TERM,

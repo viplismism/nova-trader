@@ -39,3 +39,6 @@ htmlcov/
 # Data caches
 *.cache
 .nova-runs/
+
+# Local scratch/reference files
+/lightgbm-investment-families.py

@@ -2,12 +2,14 @@
 
 import json
 import os
+from typing import Any
+
 import requests
 from pydantic import BaseModel
 from src.utils.progress import progress
 # Lightweight state shim — call_llm accepts a dict-like state with a "metadata" key.
 # Kept loose because both the new v2 engine and the backtest adapter pass plain dicts.
-StateLike = dict[str, any]
+StateLike = dict[str, Any]
 
 
 def _provider_name(model_provider: str | object) -> str:
@@ -83,6 +85,20 @@ def _extract_json_object(content: str) -> dict | None:
     return None
 
 
+def _format_exception(exc: Exception) -> str:
+    """Include SDK wrapper errors plus their lower-level transport cause."""
+    parts: list[str] = []
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        message = str(current).strip() or repr(current)
+        label = current.__class__.__name__
+        parts.append(f"{label}: {message}" if label not in message else message)
+        current = current.__cause__ or current.__context__
+    return " | caused by: ".join(parts)
+
+
 def _api_key(api_keys: dict | None, name: str) -> str:
     value = (api_keys or {}).get(name) or os.getenv(name)
     if not value:
@@ -140,12 +156,15 @@ def _call_openai_compatible_json(
     if seed is not None:
         kwargs["seed"] = seed
     response = client.chat.completions.create(**kwargs)
-    content = response.choices[0].message.content or ""
+    msg = response.choices[0].message
+    content = msg.content or ""
     telemetry = {
         "system_fingerprint": getattr(response, "system_fingerprint", None),
         "prompt_tokens": getattr(response.usage, "prompt_tokens", None) if response.usage else None,
         "completion_tokens": getattr(response.usage, "completion_tokens", None) if response.usage else None,
         "response_content": content,
+        # Present on reasoning models (o1/o3/DeepSeek-R1); ignored otherwise.
+        "reasoning_content": getattr(msg, "reasoning_content", None),
     }
     parsed = _extract_json_object(content)
     if parsed is None:
@@ -188,12 +207,14 @@ def _call_azure_openai_json(
     if seed is not None:
         kwargs["seed"] = seed
     response = client.chat.completions.create(**kwargs)
-    content = response.choices[0].message.content or ""
+    msg = response.choices[0].message
+    content = msg.content or ""
     telemetry = {
         "system_fingerprint": getattr(response, "system_fingerprint", None),
         "prompt_tokens": getattr(response.usage, "prompt_tokens", None) if response.usage else None,
         "completion_tokens": getattr(response.usage, "completion_tokens", None) if response.usage else None,
         "response_content": content,
+        "reasoning_content": getattr(msg, "reasoning_content", None),
     }
     parsed = _extract_json_object(content)
     if parsed is None:
@@ -282,7 +303,7 @@ def _call_json_model(
 
 
 def call_llm(
-    prompt: any,
+    prompt: Any,
     pydantic_model: type[BaseModel],
     agent_name: str | None = None,
     state: StateLike | None = None,
@@ -354,10 +375,21 @@ def call_llm(
                     attempt=attempt + 1,
                     error=None,
                 )
+            progress.add_tokens(
+                agent_name or "unknown",
+                telemetry.get("prompt_tokens") or 0,
+                telemetry.get("completion_tokens") or 0,
+            )
+            progress.capture_reasoning(
+                agent_name or "unknown",
+                ticker,
+                telemetry.get("reasoning_content"),
+                telemetry.get("response_content"),
+            )
             return result
 
         except Exception as e:
-            error = str(e)
+            error = _format_exception(e)
             latency_ms = (time.monotonic() - t0) * 1000.0
             if recorder is not None:
                 recorder.append_llm_call(
@@ -375,8 +407,13 @@ def call_llm(
                     attempt=attempt + 1,
                     error=error,
                 )
+            progress.add_tokens(
+                agent_name or "unknown",
+                telemetry.get("prompt_tokens") or 0,
+                telemetry.get("completion_tokens") or 0,
+            )
             if agent_name:
-                progress.update_status(agent_name, None, f"Error - retry {attempt + 1}/{max_retries}")
+                progress.update_status(agent_name, ticker, f"Error - retry {attempt + 1}/{max_retries}")
             if attempt == max_retries - 1:
                 print(f"Error in LLM call after {max_retries} attempts: {e}")
                 if default_factory:
@@ -406,6 +443,170 @@ def create_default_response(model_class: type[BaseModel]) -> BaseModel:
                 default_values[field_name] = None
 
     return model_class(**default_values)
+
+
+class _ThinkTagSplitter:
+    """Splits streamed content into ('reasoning', t) inside <think>/<thinking> tags and
+    ('answer', t) outside. Buffers across chunk boundaries so a tag split between two
+    deltas is still recognised."""
+
+    OPEN = ("<think>", "<thinking>")
+    CLOSE = ("</think>", "</thinking>")
+    _MAX_TAG = 11  # len("<thinking>")
+
+    def __init__(self):
+        self._buf = ""
+        self._in_think = False
+
+    @staticmethod
+    def _first_tag(text: str, tags: tuple[str, ...]) -> tuple[int, str | None]:
+        best, found = -1, None
+        for tag in tags:
+            idx = text.find(tag)
+            if idx != -1 and (best == -1 or idx < best):
+                best, found = idx, tag
+        return best, found
+
+    @classmethod
+    def _safe_len(cls, text: str, tags: tuple[str, ...]) -> int:
+        """How much of `text` is safe to emit without splitting a not-yet-complete tag."""
+        hold = 0
+        for k in range(1, min(cls._MAX_TAG, len(text) + 1)):
+            suffix = text[-k:]
+            if any(tag.startswith(suffix) for tag in tags):
+                hold = k
+        return len(text) - hold
+
+    def feed(self, text: str) -> list[tuple[str, str]]:
+        self._buf += text
+        out: list[tuple[str, str]] = []
+        while self._buf:
+            if not self._in_think:
+                idx, tag = self._first_tag(self._buf, self.OPEN)
+                if idx == -1:
+                    safe = self._safe_len(self._buf, self.OPEN)
+                    if safe > 0:
+                        out.append(("answer", self._buf[:safe]))
+                        self._buf = self._buf[safe:]
+                    break
+                if idx > 0:
+                    out.append(("answer", self._buf[:idx]))
+                self._buf = self._buf[idx + len(tag):]
+                self._in_think = True
+            else:
+                idx, tag = self._first_tag(self._buf, self.CLOSE)
+                if idx == -1:
+                    safe = self._safe_len(self._buf, self.CLOSE)
+                    if safe > 0:
+                        out.append(("reasoning", self._buf[:safe]))
+                        self._buf = self._buf[safe:]
+                    break
+                if idx > 0:
+                    out.append(("reasoning", self._buf[:idx]))
+                self._buf = self._buf[idx + len(tag):]
+                self._in_think = False
+        return out
+
+    def flush(self) -> list[tuple[str, str]]:
+        if not self._buf:
+            return []
+        kind = "reasoning" if self._in_think else "answer"
+        out = [(kind, self._buf)]
+        self._buf = ""
+        return out
+
+
+def stream_chat(
+    messages: list[dict[str, str]],
+    *,
+    provider: str | object,
+    model: str,
+    api_keys: dict | None = None,
+    temperature: float = 0.3,
+):
+    """Yield ``(channel, text)`` chunks from a free-form (non-JSON) chat completion.
+
+    ``channel`` is ``"reasoning"`` for a model's thinking (``reasoning_content`` field or
+    ``<think>...</think>`` tags) and ``"answer"`` for the user-facing reply. This lets the
+    chat surface stream thinking into a small box and keep the final answer clean.
+    Supports the OpenAI-compatible providers, Azure OpenAI, and Ollama.
+    """
+    prov = _provider_name(provider)
+
+    def _emit_openai_stream(stream):
+        splitter = _ThinkTagSplitter()
+        for chunk in stream:
+            choices = getattr(chunk, "choices", None)
+            if not choices:
+                continue
+            delta = choices[0].delta
+            reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
+            if reasoning:
+                yield ("reasoning", reasoning)
+            content = getattr(delta, "content", None)
+            if content:
+                yield from splitter.feed(content)
+        yield from splitter.flush()
+
+    if prov in {"openai", "openrouter", "deepseek", "groq", "minimax", "xai"}:
+        from openai import OpenAI
+
+        api_key, base_url, headers = _openai_compatible_config(prov, api_keys)
+        client = OpenAI(api_key=api_key, base_url=base_url, default_headers=headers or None)
+        stream = client.chat.completions.create(
+            model=model, messages=messages, temperature=temperature, stream=True,
+        )
+        yield from _emit_openai_stream(stream)
+        return
+
+    if prov == "azure openai":
+        from openai import AzureOpenAI
+
+        api_key = (api_keys or {}).get("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
+        endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
+        deployment = model or os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
+        if not (api_key and endpoint and deployment):
+            raise ValueError("Azure OpenAI needs AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, and a deployment.")
+        client = AzureOpenAI(
+            api_key=api_key,
+            azure_endpoint=endpoint,
+            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-10-21"),
+        )
+        stream = client.chat.completions.create(
+            model=deployment, messages=messages, temperature=temperature, stream=True,
+        )
+        yield from _emit_openai_stream(stream)
+        return
+
+    if prov == "ollama":
+        ollama_host = os.getenv("OLLAMA_HOST", "localhost")
+        base_url = os.getenv("OLLAMA_BASE_URL", f"http://{ollama_host}:11434").rstrip("/")
+        response = requests.post(
+            f"{base_url}/api/chat",
+            json={"model": model, "messages": messages, "stream": True, "options": {"temperature": temperature}},
+            stream=True,
+            timeout=120,
+        )
+        response.raise_for_status()
+        splitter = _ThinkTagSplitter()
+        for line in response.iter_lines():
+            if not line:
+                continue
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            message = payload.get("message", {})
+            reasoning = message.get("reasoning_content") or message.get("thinking")
+            if reasoning:
+                yield ("reasoning", reasoning)
+            content = message.get("content")
+            if content:
+                yield from splitter.feed(content)
+        yield from splitter.flush()
+        return
+
+    raise ValueError(f"Provider {provider!r} does not support streaming chat in this adapter.")
 
 
 def extract_json_from_response(content: str) -> dict | None:

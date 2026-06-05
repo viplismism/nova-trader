@@ -18,7 +18,7 @@ from src.tools.api import (
     get_prices,
     search_line_items,
 )
-from src.utils.progress import progress
+from src.utils.progress import current_fetch_owner, progress
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,17 @@ def build_snapshot(ctx: RunContext, api_key: str | None = None) -> MarketSnapsho
     """
     snapshot = MarketSnapshot()
 
+    # All fetches in this phase are attributed to "snapshot" (analysts read slices,
+    # they never fetch) so the run-total fetch badge counts them under one owner.
+    owner_token = current_fetch_owner.set("snapshot")
+    try:
+        _build_snapshot_body(ctx, snapshot, api_key)
+    finally:
+        current_fetch_owner.reset(owner_token)
+    return snapshot
+
+
+def _build_snapshot_body(ctx: RunContext, snapshot: MarketSnapshot, api_key: str | None) -> None:
     for ticker in ctx.tickers:
         progress.update_status("snapshot", ticker, "Fetching prices")
         try:
@@ -126,5 +137,3 @@ def build_snapshot(ctx: RunContext, api_key: str | None = None) -> MarketSnapsho
             snapshot.insider[ticker] = []
 
         progress.update_status("snapshot", ticker, "Done")
-
-    return snapshot

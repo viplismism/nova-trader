@@ -94,6 +94,7 @@ def _decide_one(
 
 def run_portfolio_manager(ctx: RunContext, view: PortfolioView, limits: Limits) -> Decisions:
     decisions = Decisions()
+    portfolio_mode = getattr(ctx.request, "portfolio_mode", "research")
 
     for ticker in ctx.tickers:
         progress.update_status(AGENT_ID, ticker, "Deciding")
@@ -112,6 +113,10 @@ def run_portfolio_manager(ctx: RunContext, view: PortfolioView, limits: Limits) 
     bull = [t for t, d in decisions.per_ticker.items() if d.action == "buy"]
     bear = [t for t in ctx.tickers
             if (c := view.consensus.get(t)) and c.direction == "bearish"]
+
+    if portfolio_mode != "long_short":
+        progress.update_status(AGENT_ID, None, "Done")
+        return decisions
 
     if bull and bear:
         # Pair the most confident bull with the most confident bear.

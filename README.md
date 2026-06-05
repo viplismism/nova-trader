@@ -1,6 +1,6 @@
 # Nova Trader
 
-Nova Trader is a compact equity long/short recommendation engine. It builds one market snapshot, gives each agent a typed view of that snapshot, aggregates signals, applies risk limits, and returns a structured recommendation with a hedged portfolio decision.
+Nova Trader is a compact equity recommendation engine with optional long/short portfolio construction. It builds one market snapshot, gives each agent a typed view of that snapshot, aggregates signals, applies risk limits, and returns a structured recommendation with a mode-aware portfolio decision.
 
 The current codebase is intentionally smaller than the earlier prototype: no LangChain, no graph runtime, no chat-message state machine. The product path is typed data in, typed recommendation out, with run artifacts saved for audit and replay.
 
@@ -74,6 +74,7 @@ and message box. Inside the chat, use plain commands:
 
 ```text
 analyze AAPL,NVDA
+mode long_short
 model MiniMax MiniMax-M2.7
 agents technical,valuation,warren_buffett
 show last
@@ -162,6 +163,6 @@ No LangChain dependency is used in the application path.
 
 ## Product Direction
 
-The product is a portfolio-aware equity long/short recommendation engine. A buy recommendation is not complete unless the portfolio manager can pair it with an acceptable short hedge, reduce it to available hedge capacity, or block it.
+The product is a portfolio-aware equity recommendation engine with optional long/short construction. The default `research` mode shows the recommendation directly. In explicit `long_short` mode, a buy recommendation is not complete unless the portfolio manager can pair it with an acceptable short hedge, reduce it to available hedge capacity, or block it.
 
 The language model is used for bounded JSON decisions and persona reasoning. Deterministic code owns snapshots, view boundaries, aggregation, risk limits, hedge pairing, persistence, and replay.

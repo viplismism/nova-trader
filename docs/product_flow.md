@@ -1,6 +1,6 @@
 # Nova Trader Product Flow
 
-Nova Trader is moving toward a portfolio-aware equity long/short recommendation engine. The product should not answer only "buy this stock." It should answer "if we like this long, what should we short against it, how large should the pair be, what evidence supports it, and what would make us change the view?"
+Nova Trader is moving toward a portfolio-aware equity recommendation engine with optional long/short construction. The product should not answer only "buy this stock." It should answer "what is the signal, how should the position be sized, what evidence supports it, and, if we are in long/short mode, what should we short against it?"
 
 ## What We Serve
 
@@ -10,8 +10,8 @@ For an investment user, the served output is a structured recommendation package
 - **Research evidence**: The system gathers prices, fundamentals, valuation inputs, news, sentiment, insider activity, and portfolio context.
 - **Agent opinions**: Analyst agents produce structured bullish, bearish, or neutral opinions with confidence and reasoning.
 - **Risk constraints**: The risk layer calculates volatility, current exposure, available position limits, and correlation adjustments.
-- **Hedged portfolio decision**: The portfolio manager turns research signals into long/short decisions. In equity long/short mode, every opening buy must have a corresponding short hedge or the buy is reduced/blocked.
-- **Recommendation answer**: The user sees the long candidate, paired short candidate, sizing, conviction, confidence, evidence, risks, and what would change the recommendation.
+- **Portfolio decision**: The portfolio manager turns research signals into decisions. In `research` mode it shows the recommendation directly. In `long_short` mode, every opening buy must have a corresponding short hedge or the buy is reduced/blocked.
+- **Recommendation answer**: The user sees the action, optional paired short candidate, sizing, conviction, confidence, evidence, risks, and what would change the recommendation.
 - **Optional backtest/paper execution**: The same decision shape can be simulated historically or sent to paper execution later, but V0 should remain research-first.
 
 ## Runtime Flow
@@ -34,11 +34,11 @@ For an investment user, the served output is a structured recommendation package
 6. **Risk manager applies portfolio constraints**
    The risk layer calculates allowed position sizes based on cash, margin, volatility, and correlation.
 
-7. **Portfolio manager builds a hedged decision**
-   The portfolio layer chooses the long candidate and finds the weakest or most suitable short candidate. If no short hedge is available, the opening buy is not allowed as a complete recommendation.
+7. **Portfolio manager builds the decision**
+   The portfolio layer chooses the action and position size. In `long_short` mode it also finds the weakest or most suitable short candidate. If no short hedge is available in that mode, the opening buy is not allowed as a complete recommendation.
 
 8. **Structured recommendation is returned**
-   The answer is not just prose. It should include action, paired hedge, size, confidence, conviction, evidence, risks, and what would change the view.
+   The answer is not just prose. It should include action, optional paired hedge, size, confidence, conviction, evidence, risks, and what would change the view.
 
 ## Product Principle
 
@@ -48,4 +48,4 @@ That means deterministic code should own routing contracts, evidence shape, risk
 
 ## First-Cut Boundary
 
-For the first cut, the product should serve decision support, not autonomous capital deployment. The user gets a hedged recommendation package that can be reviewed, challenged, logged, and later backtested. Live execution should stay out of scope until the recommendation engine is reliable enough to audit.
+For the first cut, the product should serve decision support, not autonomous capital deployment. The user gets a recommendation package that can be reviewed, challenged, logged, and later backtested. Long/short hedge enforcement is available as an explicit mode, not a hidden default. Live execution should stay out of scope until the recommendation engine is reliable enough to audit.
