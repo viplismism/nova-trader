@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -25,6 +26,7 @@ class RunRequest(BaseModel):
     end_date: date
     portfolio: Portfolio
     model: ModelConfig = Field(default_factory=ModelConfig)
+    portfolio_mode: Literal["research", "long_only", "long_short"] = "research"
     show_reasoning: bool = False
     selected_agents: list[str] = Field(default_factory=list)
 

@@ -136,6 +136,28 @@ class RunRecorder:
         return json.loads(path.read_text())
 
     @classmethod
+    def load_llm_calls(cls, run_id: str, base_dir: Path | None = None) -> dict[str, list[dict]]:
+        """Read llm.jsonl and group records by agent_id. Safe to call while a run is
+        still writing: append_llm_call writes one whole line at a time, so at worst the
+        final line is torn — we skip a JSONDecodeError rather than raise into the UI."""
+        path = (base_dir or runs_root()) / run_id / "llm.jsonl"
+        grouped: dict[str, list[dict]] = {}
+        try:
+            raw = path.read_text()
+        except FileNotFoundError:
+            return grouped
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            grouped.setdefault(rec.get("agent_id", "unknown"), []).append(rec)
+        return grouped
+
+    @classmethod
     def exists(cls, run_id: str, base_dir: Path | None = None) -> bool:
         return ((base_dir or runs_root()) / run_id).is_dir()
 

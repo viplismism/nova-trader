@@ -29,11 +29,11 @@ The architecture is split into smaller Swimlanes.io diagrams. Each diagram has a
 Nova Trader is a hedge-fund style recommendation system. It is not meant to be only a time-series forecasting tool. The product flow is:
 
 1. User asks a market or portfolio question.
-2. A future BERT/SLM router classifies intent and required context.
+2. A fast router classifies intent and required context. Today this is a small model with deterministic fallback rules; a dedicated BERT/SLM router can replace it later.
 3. The data pipeline prepares prices, fundamentals, news, sentiment, portfolio state, and history.
 4. Analyst agents produce structured opinions.
-5. Risk and portfolio layers adjust the recommendation for sizing, exposure, constraints, and equity long/short hedge pairing.
-6. The recommendation engine returns an auditable answer with action, paired hedge, conviction, confidence, evidence, risks, and sizing.
+5. Risk and portfolio layers adjust the recommendation for sizing, exposure, constraints, and mode-specific portfolio rules.
+6. The recommendation engine returns an auditable answer with action, optional paired hedge, conviction, confidence, evidence, risks, and sizing.
 
 ## Implemented Now
 
@@ -43,13 +43,13 @@ Nova Trader is a hedge-fund style recommendation system. It is not meant to be o
 - Portfolio manager.
 - Backtesting engine.
 - Optional Alpaca paper execution bridge.
-- Typed router contract for a future model-backed router.
+- Fast model-backed router with deterministic fallback.
 - Typed recommendation schemas.
-- Equity long/short hedge enforcement in the portfolio manager: opening buys must have a paired opening short.
+- Portfolio modes: `research`, `long_only`, and `long_short`. Only `long_short` enforces paired short hedges for opening buys.
 
 ## Not Implemented Yet
 
-- BERT/SLM router implementation.
+- Dedicated trained BERT/SLM router implementation.
 - Dedicated evidence store.
 - API server.
 - Web dashboard.

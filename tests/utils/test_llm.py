@@ -1,5 +1,6 @@
 from src.utils.llm import (
     _extract_json_object,
+    _format_exception,
     _openai_compatible_config,
     _prompt_to_openai_messages,
 )
@@ -25,3 +26,16 @@ def test_minimax_uses_openai_compatible_config(monkeypatch):
     assert api_key == "minimax-test-key"
     assert base_url == "https://api.minimax.io/v1"
     assert headers == {}
+
+
+def test_format_exception_includes_cause_chain():
+    try:
+        try:
+            raise OSError("DNS lookup failed")
+        except OSError as cause:
+            raise RuntimeError("Connection error.") from cause
+    except RuntimeError as exc:
+        text = _format_exception(exc)
+
+    assert "RuntimeError: Connection error." in text
+    assert "OSError: DNS lookup failed" in text

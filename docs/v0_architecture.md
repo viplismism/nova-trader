@@ -1,6 +1,6 @@
 # Nova Trader V0 Architecture
 
-Nova Trader V0 should be scoped around one clear product direction: a hedge-fund style equity long/short recommendation engine. The system should help an investment user ask a market, portfolio, risk, valuation, or backtesting question and receive a structured recommendation backed by data, multiple analyst agents, risk checks, hedge pairing, and evidence.
+Nova Trader V0 should be scoped around one clear product direction: a hedge-fund style equity recommendation engine with optional long/short construction. The system should help an investment user ask a market, portfolio, risk, valuation, or backtesting question and receive a structured recommendation backed by data, multiple analyst agents, risk checks, portfolio-aware sizing, and evidence.
 
 The architecture below adapts the layered agent-platform pattern to Nova Trader. The important idea is that the interface can stay simple in V0, but the backend should already be shaped like a real recommendation system.
 
@@ -100,11 +100,11 @@ The evaluation layer is what makes this a product instead of a demo. Every query
 
 ## V0 Product Flow
 
-In V0, the ideal flow is simple. A user asks a question such as whether to buy a stock, compare two equities, review portfolio risk, or run a backtest. The gateway converts that question into a structured route, selects the right workflow, pulls the required data, runs the relevant agents, applies risk and portfolio constraints, pairs opening long recommendations with corresponding short hedges, and returns a recommendation with action, hedge, confidence, conviction, evidence, risks, sizing, and explanation.
+In V0, the ideal flow is simple. A user asks a question such as whether to buy a stock, compare two equities, review portfolio risk, or run a backtest. The gateway converts that question into a structured route, selects the right workflow, pulls the required data, runs the relevant agents, applies risk and portfolio constraints, and returns a recommendation with action, optional hedge, confidence, conviction, evidence, risks, sizing, and explanation.
 
 The core principle is that the system should compute the recommendation, while the language model explains it. This keeps the product grounded in data, agent outputs, and risk logic instead of becoming a generic chatbot.
 
-In equity long/short mode, a buy recommendation is not considered complete by itself. The structured recommendation or portfolio manager layer must either attach a short hedge candidate or block/reduce the buy until a hedge is available.
+In explicit equity long/short mode, a buy recommendation is not considered complete by itself. The structured recommendation or portfolio manager layer must either attach a short hedge candidate or block/reduce the buy until a hedge is available. In default research mode, the system should show the signal directly so users are not confused by hidden hedge blocking.
 
 ## V0 Scope Boundaries
 

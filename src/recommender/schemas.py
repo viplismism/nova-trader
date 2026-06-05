@@ -47,7 +47,7 @@ class RecommendationRisk(BaseModel):
 
 
 class HedgeRecommendation(BaseModel):
-    """Paired hedge required for equity long/short recommendations."""
+    """Paired hedge used when a recommendation is in long_short mode."""
 
     required: bool = True
     status: Literal["proposed", "missing", "not_required"] = "proposed"
@@ -85,6 +85,7 @@ class AgentOpinion(BaseModel):
 class RecommendationResult(BaseModel):
     ticker: str
     action: RecommendationAction
+    portfolio_mode: Literal["research", "long_only", "long_short"] = "research"
     conviction: Conviction
     confidence: float = Field(ge=0.0, le=1.0)
     horizon: TimeHorizon = TimeHorizon.UNSPECIFIED
@@ -105,7 +106,10 @@ class RecommendationResult(BaseModel):
 
     @model_validator(mode="after")
     def require_short_hedge_for_opening_longs(self):
-        if self.action in {RecommendationAction.STRONG_BUY, RecommendationAction.BUY}:
+        if (
+            self.portfolio_mode == "long_short"
+            and self.action in {RecommendationAction.STRONG_BUY, RecommendationAction.BUY}
+        ):
             if not self.hedge or self.hedge.status != "proposed" or not self.hedge.short_ticker:
                 raise ValueError("Buy recommendations require a proposed short hedge in equity long/short mode")
         return self

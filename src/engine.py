@@ -48,10 +48,17 @@ def _run_one_agent(
         return Signal.failed(agent_id=spec.agent_id, ticker=ticker, error=f"view build: {e}")
 
     try:
-        return spec.runner(ctx, view, recorder)
+        signal = spec.runner(ctx, view, recorder)
     except Exception as e:
         logger.exception("agent %s failed for %s", spec.agent_id, ticker)
         return Signal.failed(agent_id=spec.agent_id, ticker=ticker, error=str(e))
+
+    # Explain-only enrichment — narrates the deterministic numbers without touching the
+    # verdict. No-op (zero LLM calls) when the run toggle is off. Runs inside this pool
+    # task so calls overlap sibling agents.
+    from src.agents.explain import add_explain_reasoning
+
+    return add_explain_reasoning(signal, spec, view, ctx, recorder)
 
 
 def run_engine(
@@ -82,6 +89,7 @@ def run_engine(
             "start_date": ctx.start_date,
             "end_date": ctx.end_date,
             "model": ctx.request.model.model_dump(),
+            "portfolio_mode": ctx.request.portfolio_mode,
             "seed": ctx.derive_seed(),
             "code_sha": ctx.code_sha,
             "selected_agents": selected_agents or list(AGENT_REGISTRY.keys()),
@@ -120,6 +128,9 @@ def run_engine(
             signals.append(sig)
             if recorder is not None:
                 recorder.append_signal(sig)
+            # Surface each agent's stance for the live agentic view (chatter feed).
+            takeaway = sig.direction if sig.status == "ok" else sig.status
+            progress.update_status(sig.agent_id, sig.ticker, "done", analysis=takeaway)
 
     # 3. Aggregate into consensus.
     consensus = compute_consensus(signals, ctx.tickers)
@@ -131,6 +142,14 @@ def run_engine(
     # 5. Portfolio manager.
     decisions = run_portfolio_manager(ctx, portfolio_view, limits)
 
+    # 6. Council reasoning — explain-only narratives over the whole board. No-op
+    # (zero LLM calls) when /reasoning is off. Never alters limits/decisions.
+    from src.agents.explain import add_council_reasoning
+
+    risk_reasoning, portfolio_reasoning = add_council_reasoning(
+        ctx, signals, consensus, limits, decisions, recorder
+    )
+
     recommendation = Recommendation(
         run_id=ctx.run_id,
         as_of=ctx.as_of.isoformat(),
@@ -140,6 +159,8 @@ def run_engine(
         limits=limits,
         decisions=decisions,
         summary=_build_summary(consensus, decisions),
+        risk_reasoning=risk_reasoning,
+        portfolio_reasoning=portfolio_reasoning,
     )
 
     if recorder is not None:

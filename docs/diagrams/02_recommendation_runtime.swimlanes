@@ -12,8 +12,8 @@ Research Agents -> Context: Analyst opinions
 
 Context -> Risk & Portfolio: Send signals and portfolio state
 Risk & Portfolio -> Risk & Portfolio: Check exposure, sizing, and constraints
-Risk & Portfolio -> Risk & Portfolio: Aggregate signals into long/short candidates
-Risk & Portfolio -> Risk & Portfolio: Pair each opening buy with a short hedge
+Risk & Portfolio -> Risk & Portfolio: Aggregate signals into candidates
+Risk & Portfolio -> Risk & Portfolio: Apply portfolio mode and optional hedge rules
 
 Risk & Portfolio -> Answer: Create recommendation
 Answer -> App: Render final response
@@ -26,3 +26,5 @@ action, paired hedge,
 confidence, conviction,
 evidence, risks, sizing,
 and what would change the view.
+Hedge is required only in
+explicit long_short mode.
