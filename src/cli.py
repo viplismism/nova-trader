@@ -434,7 +434,7 @@ def main(argv: list[str] | None = None) -> int:
             return launch_chat(
                 console,
                 provider=os.getenv("MODEL_PROVIDER", "OpenAI"),
-                model=os.getenv("MODEL_NAME", "gpt-4.1"),
+                model=os.getenv("MODEL_NAME", "gpt-4.1-mini"),
                 portfolio_mode=os.getenv("NOVA_PORTFOLIO_MODE", "research"),
             )
         parser = _build_arg_parser()

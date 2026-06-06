@@ -643,14 +643,13 @@ class NovaChat:
             done_events = [item for item in recent_events if item[0].lower() == "done"]
             other_events = [item for item in recent_events if item[0].lower() != "done"]
             for event_status, event_takeaway in done_events + other_events:
-                marker, mcolor = self._activity_marker(event_status, event_takeaway)
                 action, acolor = self._activity_action(event_status, event_takeaway)
-                row = Text("  ")
-                row.append(f"{marker} ", style=f"bold {mcolor}")
-                row.append(f"{action:<12}", style=acolor)
+                row = Text("• ", style=ASH)
+                row.append(action, style=acolor)
                 cleaned = _clean_action(event_status)
                 if cleaned and cleaned != action:
-                    row.append(cleaned, style=ASH)
+                    row.append(": ", style=ASH)
+                    row.append(cleaned, style=INK)
                 parts.append(row)
             parts.append(Text(""))
 
@@ -1549,7 +1548,7 @@ class NovaChat:
                 "explain NVDA               explain a ticker decision from the last run",
                 "show <run_id> | show last  print a saved / the latest recommendation",
                 "rerun <run_id>             replay a saved run snapshot",
-                "/model MiniMax M2.7        switch provider + model",
+                "/model OpenAI gpt-4.1-mini switch provider + model",
                 "/provider OpenAI           switch provider (keeps a default model)",
                 "/mode research             choose research, long_only, or long_short",
                 "/agents technical,valuation choose analyst agents",
@@ -1583,7 +1582,7 @@ class NovaChat:
                 "shows live tool and analyst progress while a run is active.",
                 "",
                 "Use `analyze AAPL,NVDA` to run it, `details AAPL` to inspect reasoning,",
-                "`model MiniMax MiniMax-M2.7` to switch models, and `show last` to inspect",
+                "`model OpenAI gpt-4.1-mini` to switch models, and `show last` to inspect",
                 "the latest recommendation.",
             ]
         )
@@ -1840,7 +1839,7 @@ class NovaChat:
             "[bold]Try[/bold]\n"
             "  analyze AAPL,NVDA\n"
             "  mode long_short\n"
-            "  model MiniMax MiniMax-M2.7\n"
+            "  model OpenAI gpt-4.1-mini\n"
             "  show last\n"
             "  help"
         )
