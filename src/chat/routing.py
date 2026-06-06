@@ -111,7 +111,7 @@ def default_router_model(provider: str, model: str) -> tuple[str, str]:
 
     provider = normalize_provider(provider)
     if provider == "OpenAI":
-        return "OpenAI", "gpt-4o-mini"
+        return "OpenAI", "gpt-4.1-mini"
     if provider == "MiniMax":
         return "MiniMax", "MiniMax-M2.7-highspeed"
     if provider == "DeepSeek":

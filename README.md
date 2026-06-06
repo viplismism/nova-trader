@@ -52,7 +52,7 @@ Set at least one model key in `.env`. For the default OpenAI path:
 ```text
 OPENAI_API_KEY=...
 MODEL_PROVIDER=OpenAI
-MODEL_NAME=gpt-4o-mini
+MODEL_NAME=gpt-4.1-mini
 ```
 
 MiniMax is also available through its OpenAI-compatible API:
@@ -75,7 +75,7 @@ and message box. Inside the chat, use plain commands:
 ```text
 analyze AAPL,NVDA
 mode long_short
-model MiniMax MiniMax-M2.7
+model OpenAI gpt-4.1-mini
 agents technical,valuation,warren_buffett
 show last
 rerun <run_id>

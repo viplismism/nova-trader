@@ -227,7 +227,7 @@ def ticker_details_text(recommendation: Recommendation, ticker: str) -> str:
 
 
 def agent_label(agent_id: str) -> str:
-    return agent_id.replace("_", " ").title()
+    return agent_id.replace("_", " ")
 
 
 def top_signal_names(signals: list, direction: str, limit: int = 2) -> str:
@@ -258,8 +258,9 @@ def agent_thoughts_text(signals: list, limit: int = 5) -> str:
         reason = str(signal.reasoning or field_value(signal, "explain_reasoning", "") or "")
         if not reason:
             reason = f"{signal.direction} at {signal.confidence:.0%} confidence"
+        name = agent_label(signal.agent_id).title()
         thoughts.append(
-            f"{agent_label(signal.agent_id)} was {signal.direction} at {signal.confidence:.0%}: {reason}"
+            f"{name} was {signal.direction} at {signal.confidence:.0%}: {reason}"
         )
     return "; ".join(thoughts)
 

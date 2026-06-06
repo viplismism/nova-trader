@@ -51,13 +51,13 @@ def test_natural_ticker_trade_question_routes_to_analysis():
 
 
 def test_router_model_prefers_small_fast_model_for_known_provider():
-    assert _default_router_model("OpenAI", "gpt-5.2") == ("OpenAI", "gpt-4o-mini")
+    assert _default_router_model("OpenAI", "gpt-5.2") == ("OpenAI", "gpt-4.1-mini")
     assert _default_router_model("MiniMax", "MiniMax-M2.7") == ("MiniMax", "MiniMax-M2.7-highspeed")
 
 
 def test_route_intent_uses_classifier_model(monkeypatch):
     def fake_call(**kwargs):
-        assert kwargs["model_name"] == "gpt-4o-mini"
+        assert kwargs["model_name"] == "gpt-4.1-mini"
         assert kwargs["model_provider"] == "OpenAI"
         return IntentRoute(route="analyze", confidence=0.99, reason="ticker question"), {}
 
