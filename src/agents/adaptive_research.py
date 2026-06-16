@@ -63,11 +63,7 @@ def _default_plan(ticker: str) -> _ResearchPlan:
     )
 
 
-def _clip(text: str, limit: int = 420) -> str:
-    clean = " ".join(str(text or "").split())
-    if len(clean) <= limit:
-        return clean
-    return clean[: limit - 1].rstrip() + "..."
+from src.agents._text import clip as _clip
 
 
 def _dedupe_web(items: list[WebSearchResult], limit: int = 8) -> list[WebSearchResult]:

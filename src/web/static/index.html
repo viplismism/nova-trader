@@ -67,6 +67,10 @@
     button:disabled { opacity: 0.45; cursor: not-allowed; }
     .hide { display: none !important; }
 
+    .recent { max-height: 22vh; overflow: auto; padding: 6px 8px; display: grid; gap: 4px; }
+    .recent-item { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; color: var(--ink); font-size: 12px; }
+    .recent-item:hover { border-color: var(--teal); background: #141917; }
+    .recent-q { display: block; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .activity { overflow: auto; padding: 8px; min-height: 0; }
     .activity-row {
       display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start;
@@ -252,6 +256,10 @@
             <button id="debateStop" class="secondary" type="button" disabled>Close</button>
           </div>
         </form>
+        <div id="recentWrap" class="hide">
+          <h2>Recent debates</h2>
+          <div id="recentDebates" class="recent"></div>
+        </div>
         <h2>Activity</h2>
         <div id="activity" class="activity"><div class="empty">No activity yet.</div></div>
       </section>
@@ -526,9 +534,11 @@
       $("modeDebate").classList.toggle("on",mode==="debate");
       $("runForm").classList.toggle("hide",mode!=="signals");
       $("debateForm").classList.toggle("hide",mode!=="debate");
+      $("recentWrap").classList.toggle("hide",mode!=="debate");
       $("resultsTitle").textContent = mode==="signals"?"Signal Cards":"Research Desk";
       renderActivity(); renderInspector(); renderResults(); renderChat();
       $("askButton").disabled=!M().runId;
+      if(mode==="debate") loadRecent();
     }
     // Clear a single mode's bucket (only when a fresh run starts in that mode).
     function resetMode(mode){
@@ -601,7 +611,7 @@
       if(m && !D._memoPushed){ D.chat.push({role:"nova",who:"Nova — research memo",text:`${m.ticker}: ${String(m.conviction).toUpperCase()} conviction, ${m.directional_lean}.\n\n${m.base_case}`}); D._memoPushed=true; }
       finalizeActivity("debate");
       setState("ready"); $("debateButton").disabled=false; $("debateStop").disabled=true;
-      if(state.mode==="debate"){ renderDebate(); renderChat(); $("askButton").disabled=!D.runId; }
+      if(state.mode==="debate"){ renderDebate(); renderChat(); $("askButton").disabled=!D.runId; loadRecent(); }
     }
     // The stream dropped before 'done' — the run keeps going server-side and saves to
     // disk, so poll for the saved result and render it when ready.
@@ -659,6 +669,36 @@
         if(D.debate.run_id){ recoverDebate(D, D.debate.run_id); }
         else { pushVerdict("debate","Couldn't start the debate (connection failed before it began). Check the server / API key and try again.","error"); setState("error"); $("debateButton").disabled=false; $("debateStop").disabled=true; }
       };
+    }
+
+    // ── recent debates: re-open any saved run by id ──
+    async function loadRecent(){
+      const el=$("recentDebates"); if(!el) return;
+      try{
+        const j=await (await fetch("/api/debate/recent")).json();
+        const runs=j.runs||[];
+        el.innerHTML = runs.length
+          ? runs.map(r=>`<div class="recent-item" data-id="${esc(r.run_id)}">${esc(r.ticker||"?")} · ${esc(r.conviction||"")} ${esc(r.lean||"")}<span class="recent-q">${esc(r.question||"")}</span></div>`).join("")
+          : '<div class="empty" style="padding:4px">No saved debates yet.</div>';
+        el.querySelectorAll(".recent-item[data-id]").forEach(it=>it.addEventListener("click",()=>openDebateRun(it.dataset.id)));
+      }catch(_){ el.innerHTML='<div class="empty" style="padding:4px">Could not load recent debates.</div>'; }
+    }
+    async function openDebateRun(runId){
+      if(state.debateSource){ state.debateSource.close(); state.debateSource=null; }
+      resetMode("debate"); setState("loading…");
+      const D=state.modes.debate;
+      D.debate={ticker:"",source:"filings",horizon:"",speed:"",run_id:runId,plan:null,specialists:{},bear:null,memo:null,citation_urls:{}};
+      D._memoPushed=false;
+      for(const k of Object.keys(SPEC_LABELS)) D.debate.specialists[k]={status:"queued",draft:null};
+      try{
+        const j=await (await fetch(`/api/debate/result?run_id=${encodeURIComponent(runId)}`)).json();
+        if(j.status==="done"){
+          const r=j.result;
+          if(r.input){ D.debate.ticker=r.input.ticker; D.debate.horizon=r.input.horizon; }
+          D.debate.source=r.specialist_source||(r.input&&r.input.source)||"filings";
+          applyDebateDone(D,{result:r,run_id:runId,usage:r.usage});
+        } else { setState("ready"); pushVerdict("debate","That run could not be loaded.","error"); }
+      }catch(_){ setState("error"); pushVerdict("debate","Failed to load that run.","error"); }
     }
 
     // ── ask (chat) — works after a Signals run OR a Debate (both have a run_id) ──

@@ -226,16 +226,26 @@ def create_app() -> FastAPI:
                 status_code=400,
                 detail="ANTHROPIC_API_KEY is not configured. The research-desk debate runs on Claude.",
             )
-        events: queue.Queue[dict[str, Any]] = queue.Queue()
+        # Bounded: a debate is decoupled from the stream, so if the browser disconnects
+        # nobody drains this. Cap it and drop (never block the worker) when full — the
+        # full result is still saved to disk and recoverable by run_id, and stream
+        # termination is driven by done.set(), not by these events.
+        events: queue.Queue[dict[str, Any]] = queue.Queue(maxsize=4096)
         done = threading.Event()
         cancel = threading.Event()
         recorder = DebateRecorder(symbol, question, horizon, source)
         with _ACTIVE_DEBATES_LOCK:
             _ACTIVE_DEBATES[recorder.run_id] = cancel
 
+        def _put(event: dict[str, Any]) -> None:
+            try:
+                events.put_nowait(event)
+            except queue.Full:
+                pass
+
         def emit(**event: Any) -> None:
-            events.put(event)
-            recorder.event(**event)  # tap the stream for the saved trajectory
+            _put(event)
+            recorder.event(**event)  # tap the stream for the saved trajectory (always captured)
 
         def worker() -> None:
             async def driver() -> None:
@@ -248,10 +258,10 @@ def create_app() -> FastAPI:
                                                           emit=emit, record=recorder.record, cancel=cancel,
                                                           fast=fast, bear_model=bear_model, bear_web=bear_web)
                     run_id = recorder.save(result, str(DEBATE_USAGE))
-                    events.put({"type": "done", "result": result, "usage": str(DEBATE_USAGE),
-                                "run_id": run_id, "llm_logs": recorder.grouped_llm_logs()})
+                    _put({"type": "done", "result": result, "usage": str(DEBATE_USAGE),
+                          "run_id": run_id, "llm_logs": recorder.grouped_llm_logs()})
                 except DebateCancelled:
-                    events.put({"type": "failure", "message": "Debate cancelled."})
+                    _put({"type": "failure", "message": "Debate cancelled."})
                 except Exception as exc:  # pragma: no cover - provider/network errors vary
                     if _is_billing_or_quota_error(exc):
                         emit(type="phase", phase="plan", status="warn",
@@ -260,20 +270,20 @@ def create_app() -> FastAPI:
                             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                                 result = await run_local_debate_fallback(symbol, question, horizon, emit)
                             run_id = recorder.save(result, "local fallback; no Anthropic tokens")
-                            events.put({"type": "done", "result": result,
-                                        "usage": "local fallback; no Anthropic tokens", "run_id": run_id,
-                                        "llm_logs": recorder.grouped_llm_logs()})
+                            _put({"type": "done", "result": result,
+                                  "usage": "local fallback; no Anthropic tokens", "run_id": run_id,
+                                  "llm_logs": recorder.grouped_llm_logs()})
                         except Exception as exc2:  # noqa: BLE001
-                            events.put({"type": "failure", "message": _friendly_error(exc2)})
+                            _put({"type": "failure", "message": _friendly_error(exc2)})
                     else:
-                        events.put({"type": "failure", "message": _friendly_error(exc)})
+                        _put({"type": "failure", "message": _friendly_error(exc)})
                 except BaseException as exc:  # noqa: BLE001 - never let the stream hang
-                    events.put({"type": "failure", "message": _friendly_error(exc)})
+                    _put({"type": "failure", "message": _friendly_error(exc)})
 
             try:
                 asyncio.run(driver())
             except BaseException as exc:  # asyncio.run itself failing must not hang the stream
-                events.put({"type": "failure", "message": _friendly_error(exc)})
+                _put({"type": "failure", "message": _friendly_error(exc)})
             finally:
                 # Guarantee the stream terminates and the registry never leaks, even if
                 # asyncio.run() failed before driver()'s own cleanup could run.
@@ -302,6 +312,11 @@ def create_app() -> FastAPI:
             ev.set()
             return {"status": "cancelling", "run_id": run_id}
         return {"status": "not_active", "run_id": run_id}
+
+    @app.get("/api/debate/recent")
+    async def debate_recent() -> dict[str, Any]:
+        """Saved debates (newest first) so the UI can re-open a past run by id."""
+        return {"runs": DebateRecorder.list_recent(20)}
 
     @app.get("/api/debate/result")
     async def debate_result(run_id: str = Query(..., min_length=1)) -> dict[str, Any]:

@@ -8,7 +8,6 @@ layer can narrate the "why" afterward without changing the verdict.
 from __future__ import annotations
 
 import logging
-import re
 
 from src.schemas.context import RunContext
 from src.schemas.signals import Signal, WebSourceCitation
@@ -54,22 +53,11 @@ _RISK_TERMS = {
 }
 
 
-def _term_count(text: str, terms: set[str]) -> int:
-    low = text.lower()
-    total = 0
-    for term in terms:
-        if " " in term:
-            total += low.count(term)
-        else:
-            total += len(re.findall(rf"\b{re.escape(term)}\b", low))
-    return total
+from src.agents._text import clip as _snippet190, term_count as _term_count
 
 
-def _snippet(text: str, limit: int = 190) -> str:
-    clean = " ".join((text or "").split())
-    if len(clean) <= limit:
-        return clean
-    return clean[: limit - 1].rstrip() + "..."
+def _snippet(text: str) -> str:
+    return _snippet190(text, 190)
 
 
 def run_web_research_agent(ctx: RunContext, view: WebResearchView, recorder=None) -> Signal:  # noqa: ARG001

@@ -112,3 +112,29 @@ class DebateRecorder:
     @classmethod
     def exists(cls, run_id: str, base_dir: Path | None = None) -> bool:
         return ((base_dir or runs_root()) / run_id / "debate.json").is_file()
+
+    @classmethod
+    def list_recent(cls, limit: int = 20, base_dir: Path | None = None) -> list[dict[str, Any]]:
+        """Saved debate runs (newest first) as compact rows for a 'recent' picker."""
+        root = base_dir or runs_root()
+        try:
+            dirs = [d for d in root.iterdir() if d.is_dir() and d.name.startswith("debate-")]
+        except Exception:  # pragma: no cover
+            return []
+        dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+        rows: list[dict[str, Any]] = []
+        for d in dirs[:limit]:
+            try:
+                data = json.loads((d / "debate.json").read_text())
+            except Exception:
+                continue
+            memo = data.get("memo", {})
+            inp = data.get("input", {})
+            rows.append({
+                "run_id": data.get("run_id", d.name),
+                "ticker": inp.get("ticker", ""),
+                "question": inp.get("question", ""),
+                "conviction": memo.get("conviction", ""),
+                "lean": memo.get("directional_lean", ""),
+            })
+        return rows
