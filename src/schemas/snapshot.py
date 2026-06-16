@@ -10,10 +10,12 @@ from pydantic import BaseModel, Field
 
 from src.data.models import (
     CompanyNews,
+    FilingExcerpt,
     FinancialMetrics,
     InsiderTrade,
     LineItem,
     Price,
+    WebSearchResult,
 )
 
 Ticker = str
@@ -32,6 +34,8 @@ class MarketSnapshot(BaseModel):
     line_items: dict[Ticker, list[LineItem]] = Field(default_factory=dict)
     news: dict[Ticker, list[CompanyNews]] = Field(default_factory=dict)
     insider: dict[Ticker, list[InsiderTrade]] = Field(default_factory=dict)
+    filings: dict[Ticker, list[FilingExcerpt]] = Field(default_factory=dict)
+    web_research: dict[Ticker, list[WebSearchResult]] = Field(default_factory=dict)
     market_cap: dict[Ticker, float | None] = Field(default_factory=dict)
 
     model_config = {"arbitrary_types_allowed": True}

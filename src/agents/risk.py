@@ -50,7 +50,7 @@ def run_risk_manager(ctx: RunContext, view: PortfolioView) -> Limits:
     for ticker in all_tickers:
         prices = view.prices.get(ticker, [])
         if not prices:
-            progress.update_status(AGENT_ID, ticker, "No price data")
+            progress.update_status(AGENT_ID, None, f"{ticker}: no price data")
             vol_data[ticker] = {
                 "daily_volatility": 0.05,
                 "annualized_volatility": 0.05 * (252 ** 0.5),
@@ -77,8 +77,8 @@ def run_risk_manager(ctx: RunContext, view: PortfolioView) -> Limits:
         if len(returns) > 0:
             returns_by_ticker[ticker] = returns
         progress.update_status(
-            AGENT_ID, ticker,
-            f"Price {current_prices[ticker]:.2f}, vol {vol_data[ticker]['annualized_volatility']:.1%}",
+            AGENT_ID, None,
+            f"{ticker}: price {current_prices[ticker]:.2f}, vol {vol_data[ticker]['annualized_volatility']:.1%}",
         )
 
     # 2. Correlation matrix across active tickers
@@ -142,8 +142,8 @@ def run_risk_manager(ctx: RunContext, view: PortfolioView) -> Limits:
             remaining_position_limit=float(max(0.0, remaining)),
         )
         progress.update_status(
-            AGENT_ID, ticker,
-            f"Adj. limit {combined_pct:.1%}, available ${max_position:.0f}",
+            AGENT_ID, None,
+            f"{ticker}: adj. limit {combined_pct:.1%}, available ${max_position:.0f}",
         )
 
     progress.update_status(AGENT_ID, None, "Done")

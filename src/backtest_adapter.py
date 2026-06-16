@@ -21,8 +21,8 @@ def run_hedge_fund(
     start_date: str,
     end_date: str,
     portfolio: dict,
-    model_name: str = "gpt-4.1",
-    model_provider: str = "OpenAI",
+    model_name: str = "MiniMax-M2.7",
+    model_provider: str = "MiniMax",
     selected_analysts: list[str] | None = None,
     show_reasoning: bool = False,
 ) -> dict:

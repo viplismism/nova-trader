@@ -13,10 +13,12 @@ from pydantic import BaseModel, Field
 
 from src.data.models import (
     CompanyNews,
+    FilingExcerpt,
     FinancialMetrics,
     InsiderTrade,
     LineItem,
     Price,
+    WebSearchResult,
 )
 from src.schemas.portfolio import Portfolio
 from src.schemas.signals import Consensus
@@ -79,6 +81,37 @@ class InsiderView(BaseModel):
 
     ticker: str
     trades: list[InsiderTrade]
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
+class FilingsView(BaseModel):
+    """For the SEC filings analyst."""
+
+    ticker: str
+    excerpts: list[FilingExcerpt]
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
+class WebResearchView(BaseModel):
+    """For the live web research analyst."""
+
+    ticker: str
+    results: list[WebSearchResult]
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
+class AdaptiveResearchView(BaseModel):
+    """For the tool-use-style adaptive research analyst."""
+
+    ticker: str
+    metrics: list[FinancialMetrics]
+    market_cap: float | None
+    news: list[CompanyNews]
+    filings: list[FilingExcerpt]
+    web_results: list[WebSearchResult]
 
     model_config = {"arbitrary_types_allowed": True}
 

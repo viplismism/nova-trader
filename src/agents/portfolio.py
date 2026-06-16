@@ -96,8 +96,11 @@ def run_portfolio_manager(ctx: RunContext, view: PortfolioView, limits: Limits) 
     decisions = Decisions()
     portfolio_mode = getattr(ctx.request, "portfolio_mode", "research")
 
+    # Single phase-level status (no ticker) so the activity log shows ONE
+    # "portfolio manager" row — like the risk manager — instead of a per-ticker
+    # row plus a phase row. Goes Deciding → Done below.
+    progress.update_status(AGENT_ID, None, "Deciding")
     for ticker in ctx.tickers:
-        progress.update_status(AGENT_ID, ticker, "Deciding")
         consensus = view.consensus.get(ticker)
         limit = limits.per_ticker.get(ticker)
         pos = view.portfolio.positions.get(ticker)

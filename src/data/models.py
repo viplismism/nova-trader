@@ -113,6 +113,24 @@ class CompanyNewsResponse(BaseModel):
     news: list[CompanyNews]
 
 
+class FilingExcerpt(BaseModel):
+    ticker: str
+    chunk_id: str
+    form: str
+    fiscal_year: str
+    item: str
+    url: str
+    text: str
+
+
+class WebSearchResult(BaseModel):
+    ticker: str
+    title: str
+    url: str
+    snippet: str
+    source: str = "web"
+
+
 class CompanyFacts(BaseModel):
     ticker: str
     name: str

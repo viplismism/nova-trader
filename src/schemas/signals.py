@@ -19,6 +19,26 @@ Direction = Literal["bullish", "bearish", "neutral"]
 Action = Literal["buy", "sell", "short", "cover", "hold"]
 
 
+# ── Source citations ────────────────────────────────────────
+# Structured provenance so the UI can render clickable evidence chips instead of
+# burying URLs / filing refs inside free-text key_factors.
+
+
+class WebSourceCitation(BaseModel):
+    title: str
+    url: str
+    snippet: str = ""
+
+
+class FilingCitation(BaseModel):
+    chunk_id: str
+    form: str
+    fiscal_year: str = ""
+    item: str = ""
+    url: str = ""
+    snippet: str = ""
+
+
 # ── Analyst output ──────────────────────────────────────────
 
 
@@ -37,6 +57,10 @@ class Signal(BaseModel):
     reasoning: str = ""
     key_factors: list[str] = Field(default_factory=list)
     evidence_ids: list[str] = Field(default_factory=list)
+    # Structured citations surfaced as clickable chips in the UI. Additive and
+    # default-empty so older saved runs still validate.
+    web_sources: list[WebSourceCitation] = Field(default_factory=list)
+    filing_sources: list[FilingCitation] = Field(default_factory=list)
     # LLM explain-only narration over the deterministic numbers. Verdict-immutable:
     # never set by Signal.failed/abstained and never affects direction/confidence.
     explain_reasoning: str = ""

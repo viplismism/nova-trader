@@ -17,12 +17,15 @@ from src.schemas.signals import Consensus
 from src.schemas.snapshot import MarketSnapshot
 from src.schemas.portfolio import Portfolio
 from src.schemas.views import (
+    AdaptiveResearchView,
+    FilingsView,
     FinancialsView,
     InsiderView,
     NewsSentimentView,
     PersonaView,
     PortfolioView,
     PriceView,
+    WebResearchView,
 )
 
 
@@ -71,12 +74,40 @@ def _build_insider_view(snapshot: MarketSnapshot, ticker: str) -> InsiderView:
     )
 
 
+def _build_filings_view(snapshot: MarketSnapshot, ticker: str) -> FilingsView:
+    return FilingsView(
+        ticker=ticker,
+        excerpts=snapshot.filings.get(ticker, []),
+    )
+
+
+def _build_web_research_view(snapshot: MarketSnapshot, ticker: str) -> WebResearchView:
+    return WebResearchView(
+        ticker=ticker,
+        results=snapshot.web_research.get(ticker, []),
+    )
+
+
+def _build_adaptive_research_view(snapshot: MarketSnapshot, ticker: str) -> AdaptiveResearchView:
+    return AdaptiveResearchView(
+        ticker=ticker,
+        metrics=snapshot.financials.get(ticker, []),
+        market_cap=snapshot.market_cap.get(ticker),
+        news=snapshot.news.get(ticker, []),
+        filings=snapshot.filings.get(ticker, []),
+        web_results=snapshot.web_research.get(ticker, []),
+    )
+
+
 PER_TICKER_BUILDERS: dict[Type[BaseModel], Callable[[MarketSnapshot, str], BaseModel]] = {
+    AdaptiveResearchView: _build_adaptive_research_view,
     PriceView: _build_price_view,
     FinancialsView: _build_financials_view,
     PersonaView: _build_persona_view,
     NewsSentimentView: _build_news_sentiment_view,
     InsiderView: _build_insider_view,
+    FilingsView: _build_filings_view,
+    WebResearchView: _build_web_research_view,
 }
 
 

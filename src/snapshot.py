@@ -18,6 +18,8 @@ from src.tools.api import (
     get_prices,
     search_line_items,
 )
+from src.tools.sec_filings import get_sec_filing_excerpts
+from src.tools.web_search import get_web_research
 from src.utils.progress import current_fetch_owner, progress
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,9 @@ def build_snapshot(ctx: RunContext, api_key: str | None = None) -> MarketSnapsho
 
 
 def _build_snapshot_body(ctx: RunContext, snapshot: MarketSnapshot, api_key: str | None) -> None:
+    selected = set(ctx.request.selected_agents or [])
+    fetch_filings = not selected or "sec_filings" in selected
+    fetch_web = not selected or "web_research" in selected
     for ticker in ctx.tickers:
         progress.update_status("snapshot", ticker, "Fetching prices")
         try:
@@ -135,5 +140,25 @@ def _build_snapshot_body(ctx: RunContext, snapshot: MarketSnapshot, api_key: str
         except Exception as e:
             logger.warning("snapshot insider failed for %s: %s", ticker, e)
             snapshot.insider[ticker] = []
+
+        if fetch_filings:
+            progress.update_status("snapshot", ticker, "Fetching SEC filings")
+            try:
+                snapshot.filings[ticker] = get_sec_filing_excerpts(ticker=ticker) or []
+            except Exception as e:
+                logger.warning("snapshot SEC filings failed for %s: %s", ticker, e)
+                snapshot.filings[ticker] = []
+        else:
+            snapshot.filings[ticker] = []
+
+        if fetch_web:
+            progress.update_status("snapshot", ticker, "Searching the web")
+            try:
+                snapshot.web_research[ticker] = get_web_research(ticker=ticker) or []
+            except Exception as e:
+                logger.warning("snapshot web research failed for %s: %s", ticker, e)
+                snapshot.web_research[ticker] = []
+        else:
+            snapshot.web_research[ticker] = []
 
         progress.update_status("snapshot", ticker, "Done")

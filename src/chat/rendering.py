@@ -12,6 +12,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
+from src.chat.signal_card import clean_reasoning_text
 from src.chat.theme import AMBER, ASH, INK, ROSE, SAGE, TEAL
 from src.runs import runs_root
 from src.schemas.signals import Recommendation
@@ -175,7 +176,12 @@ def recommendation_summary_text(recommendation: Recommendation) -> str:
             status = signal.status
             direction = signal.direction.upper()
             confidence = f"{signal.confidence:.0%}" if status == "ok" else status
-            reasoning = signal.error or signal.reasoning or "No reasoning supplied."
+            reasoning = (
+                clean_reasoning_text(signal.error)
+                or clean_reasoning_text(field_value(signal, "explain_reasoning", ""))
+                or clean_reasoning_text(signal.reasoning)
+                or "No reasoning supplied."
+            )
             lines.append(
                 f"  - {signal.agent_id:<18} {direction:<8} {confidence:<9} {shorten(reasoning)}"
             )
@@ -220,7 +226,12 @@ def ticker_details_text(recommendation: Recommendation, ticker: str) -> str:
         status = signal.status
         direction = signal.direction.upper()
         confidence = f"{signal.confidence:.0%}" if status == "ok" else status
-        reasoning = signal.error or signal.reasoning or "No reasoning supplied."
+        reasoning = (
+            clean_reasoning_text(signal.error)
+            or clean_reasoning_text(field_value(signal, "explain_reasoning", ""))
+            or clean_reasoning_text(signal.reasoning)
+            or "No reasoning supplied."
+        )
         lines.append(f"- {signal.agent_id}: {direction} {confidence}")
         lines.append(f"  {shorten(reasoning, 420)}")
     return "\n".join(lines)
@@ -241,7 +252,7 @@ def top_signal_names(signals: list, direction: str, limit: int = 2) -> str:
 
 def notable_data_gap(signals: list) -> str:
     for signal in signals:
-        reason = signal.error or signal.reasoning
+        reason = clean_reasoning_text(signal.error) or clean_reasoning_text(signal.reasoning)
         low = reason.lower() if reason else ""
         if signal.status in {"failed", "abstained"} or any(term in low for term in ("missing", "unavailable", "no data")):
             return f"{agent_label(signal.agent_id)}: {shorten(reason or signal.status, 140)}"
@@ -255,7 +266,10 @@ def agent_thoughts_text(signals: list, limit: int = 5) -> str:
     ordered = sorted(ok, key=lambda signal: signal.confidence, reverse=True)[:limit]
     thoughts = []
     for signal in ordered:
-        reason = str(signal.reasoning or field_value(signal, "explain_reasoning", "") or "")
+        reason = (
+            clean_reasoning_text(field_value(signal, "explain_reasoning", ""))
+            or clean_reasoning_text(signal.reasoning)
+        )
         if not reason:
             reason = f"{signal.direction} at {signal.confidence:.0%} confidence"
         name = agent_label(signal.agent_id).title()

@@ -47,6 +47,8 @@ from src.chat.routing import (
     normalize_provider as _normalize_provider,
     provider_choices as _provider_choices,
 )
+from src.chat.signal_card import build_qa_messages as _build_qa_messages
+from src.chat.signal_card import signal_cards_context_text as _signal_cards_context_text
 from src.chat.theme import AMBER, ASH, INK, PTK_ASH, PTK_BG, PTK_INK, ROSE, SAGE, TEAL
 from src.engine import run_engine
 from src.runs import RunRecorder, runs_root
@@ -293,7 +295,7 @@ class NovaChat:
         return int(self._app.run() or 0)
 
     def _header_fragments(self):
-        agents = "default set (7)" if self.settings.agents == DEFAULT_AGENTS else ",".join(self.settings.agents)
+        agents = f"default set ({len(DEFAULT_AGENTS)})" if self.settings.agents == DEFAULT_AGENTS else ",".join(self.settings.agents)
         dot_style = (AMBER + " bold") if self._busy else (SAGE + " bold")
         status = "running" if self._busy else "ready"
         return [
@@ -1023,7 +1025,7 @@ class NovaChat:
     @staticmethod
     def _is_analysis_event(label: str) -> bool:
         low = label.lower()
-        return any(key in low for key in ("snapshot", "technical", "fundamentals", "growth", "valuation", "news sentiment", "insider sentiment", "warren buffett", "risk manager", "portfolio manager"))
+        return any(key in low for key in ("snapshot", "technical", "fundamentals", "growth", "valuation", "news sentiment", "web research", "sec filings", "adaptive research", "insider sentiment", "warren buffett", "risk manager", "portfolio manager"))
 
     @classmethod
     def _todo_rows(cls, status_lines: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -1367,6 +1369,17 @@ class NovaChat:
                 self._run_in_thread("analyze", tickers)
             else:
                 self._emit(ChatEvent("assistant", "Usage", "/analyze AAPL,NVDA"))
+        elif cmd == "debate":
+            tickers = _extract_tickers(rest)
+            # The question is whatever follows the ticker; fall back to a default angle.
+            question = rest
+            if tickers:
+                question = re.sub(re.escape(tickers[0]), "", rest, count=1).strip(" ,:-").strip()
+            question = question or "Is the current growth thesis still intact over the next year?"
+            if tickers:
+                self._run_in_thread("debate", [tickers[0], question])
+            else:
+                self._emit(ChatEvent("assistant", "Usage", "/debate NVDA Is the AI accelerator growth durable?"))
         elif cmd in {"details", "detail", "explain", "why"}:
             tickers = _extract_tickers(rest)
             if tickers:
@@ -1419,6 +1432,8 @@ class NovaChat:
                 self._ask_tui(values[0])
             elif mode == "route":
                 self._route_tui(values[0])
+            elif mode == "debate":
+                self._debate_tui(values[0], values[1])
         finally:
             self._busy = False
             self._refresh_tui()
@@ -1430,24 +1445,90 @@ class NovaChat:
         "Talk like a helpful, sharp colleague: greet back naturally, answer finance/markets/investing/risk/portfolio questions "
         "directly and conversationally, and keep it concise. If the user clearly wants a "
         "recommendation on specific tickers, tell them to run `analyze AAPL,NVDA` (the "
-        "engine does the real multi-analyst run). For non-finance topics, briefly decline "
+        "engine does the real multi-analyst run). When latest-run context is provided, "
+        "treat it as the source of truth, answer from those signal cards, and say when "
+        "the run does not contain enough evidence. For non-finance topics, briefly decline "
         "and steer back. You are not a licensed advisor — no personalized guarantees. "
-        "You may use light markdown (bold, short bullet lists) but keep answers tight."
+        "Use 1-3 short paragraphs unless bullets make the answer clearer."
     )
 
     def _chat_messages(self, question: str) -> list[dict[str, str]]:
-        messages = [{"role": "system", "content": self._CHAT_SYSTEM}]
+        context = None
         if self.last_recommendation is not None:
-            messages.append({
-                "role": "system",
-                "content": "Context from the latest run:\n" + _recommendation_summary_text(self.last_recommendation),
-            })
-        messages.append({"role": "user", "content": question})
-        return messages
+            context = "Grounded context from the latest Nova Trader run:\n" + _signal_cards_context_text(self.last_recommendation)
+        return _build_qa_messages(self._CHAT_SYSTEM, question, context)
 
     def _ask_tui(self, question: str) -> None:
         # The status box shows the live thinking; the answer streams in the conversation.
         self._stream_answer(self._chat_messages(question))
+
+    def _debate_tui(self, ticker: str, question: str) -> None:
+        """Run the additive research-desk debate (supervisor → 4 specialists → bear →
+        cited memo) and stream its phases into the status box + transcript. Anthropic-native;
+        leaves the deterministic analyst pipeline untouched."""
+        import asyncio
+        import contextlib
+        import io
+
+        from src.debate import run_debate
+        from src.debate.recorder import DebateRecorder
+
+        spec_labels = {"fundamental": "Fundamental", "sentiment": "Sentiment",
+                       "valuation": "Valuation", "macro": "Macro"}
+        recorder = DebateRecorder(ticker, question, "6-12 months", "filings")
+        self._emit(ChatEvent("tool", "Research Desk", f"debating {ticker}: {question[:80]}"))
+
+        def emit(**ev) -> None:
+            recorder.event(**ev)
+            t = ev.get("type")
+            if t == "phase":
+                detail = ev.get("detail") or ev.get("status")
+                self._emit(ChatEvent("tool", ev.get("phase", "phase").title(), f"{ev.get('status')} · {detail}"))
+                if ev.get("phase") == "plan" and ev.get("status") == "done" and ev.get("plan"):
+                    fa = ev["plan"].get("focus_areas", {})
+                    body = ev["plan"].get("restated_question", "") + "\n\n" + "\n".join(
+                        f"• {spec_labels.get(k, k)}: {fa.get(k, '')}" for k in spec_labels
+                    )
+                    self._emit(ChatEvent("assistant", "Supervisor plan", body))
+            elif t == "tool_call":
+                bits = ev.get("query") or (", ".join(ev.get("results", [])[:3]) if ev.get("results") else "")
+                label = spec_labels.get(ev.get("agent", ""), ev.get("agent", "")) or ev.get("tool", "")
+                self._emit(ChatEvent("tool", label, f"{ev.get('tool', '')}: {bits}"))
+            elif t == "specialist":
+                key = ev.get("key", "")
+                if ev.get("status") == "done":
+                    d = ev.get("draft") or {}
+                    self._emit(ChatEvent("tool", spec_labels.get(key, key),
+                                         f"done · {d.get('stance', '?')} ({len(d.get('key_findings', []))} findings)"))
+                else:
+                    self._emit(ChatEvent("tool", spec_labels.get(key, key), "researching…"))
+
+        async def driver():
+            return await run_debate(ticker, question, "6-12 months", "filings", emit=emit, record=recorder.record)
+
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                result, _store = asyncio.run(driver())
+        except Exception as exc:  # noqa: BLE001
+            self._emit(ChatEvent("error", "Debate failed", str(exc)))
+            return
+
+        recorder.save(result, "")
+
+        memo = result.get("memo", {})
+        cites = ", ".join(memo.get("citations", [])[:12])
+        lines = [
+            f"{memo.get('ticker', ticker)}: {str(memo.get('conviction', '')).upper()} conviction · {memo.get('directional_lean', '')}",
+            "",
+            f"Bull: {memo.get('bull_case', '')}",
+            f"Base: {memo.get('base_case', '')}",
+            f"Bear: {memo.get('bear_case', '')}",
+        ]
+        if memo.get("key_risks"):
+            lines += ["", "Key risks:"] + [f"• {r}" for r in memo["key_risks"]]
+        if cites:
+            lines += ["", f"Citations: {cites}"]
+        self._emit(ChatEvent("assistant", "Research memo", "\n".join(lines)))
 
     def _route_tui(self, text: str) -> None:
         tickers = _extract_tickers(text)
@@ -1543,13 +1624,14 @@ class NovaChat:
         return "\n".join(
             [
                 "ask anything (finance)     just type a question — Nova answers, streamed",
-                "analyze AAPL,NVDA          run a recommendation",
+                "analyze AAPL,NVDA          run a recommendation (deterministic analysts)",
+                "/debate NVDA <question>    research-desk debate: supervisor + 4 specialists + cited memo",
                 "details AAPL               show analyst reasoning from the last run",
                 "explain NVDA               explain a ticker decision from the last run",
                 "show <run_id> | show last  print a saved / the latest recommendation",
                 "rerun <run_id>             replay a saved run snapshot",
-                "/model OpenAI gpt-4.1-mini switch provider + model",
-                "/provider OpenAI           switch provider (keeps a default model)",
+                "/model MiniMax MiniMax-M2.7 switch provider + model",
+                "/provider MiniMax          switch provider (keeps a default model)",
                 "/mode research             choose research, long_only, or long_short",
                 "/agents technical,valuation choose analyst agents",
                 "/reasoning on|off          per-analyst LLM 'why' narration in the inspector",
@@ -1582,7 +1664,7 @@ class NovaChat:
                 "shows live tool and analyst progress while a run is active.",
                 "",
                 "Use `analyze AAPL,NVDA` to run it, `details AAPL` to inspect reasoning,",
-                "`model OpenAI gpt-4.1-mini` to switch models, and `show last` to inspect",
+                "`model MiniMax MiniMax-M2.7` to switch models, and `show last` to inspect",
                 "the latest recommendation.",
             ]
         )
@@ -1839,7 +1921,7 @@ class NovaChat:
             "[bold]Try[/bold]\n"
             "  analyze AAPL,NVDA\n"
             "  mode long_short\n"
-            "  model OpenAI gpt-4.1-mini\n"
+            "  model MiniMax MiniMax-M2.7\n"
             "  show last\n"
             "  help"
         )
@@ -1986,7 +2068,7 @@ class NovaChat:
             self.console.print(f"[{ROSE}]No run found at {runs_root() / run_id}[/{ROSE}]")
             return
         try:
-            recommendation = Recommendation.model_validate(RunRecorder.load_recommendation_dict(run_id))
+            recommendation = RunRecorder.load_recommendation(run_id)
         except FileNotFoundError:
             self.console.print(f"[{ROSE}]Run {run_id} has no recommendation.json.[/{ROSE}]")
             return
@@ -1999,7 +2081,7 @@ class NovaChat:
             self._emit(ChatEvent("error", "Run not found", str(runs_root() / run_id)))
             return
         try:
-            recommendation = Recommendation.model_validate(RunRecorder.load_recommendation_dict(run_id))
+            recommendation = RunRecorder.load_recommendation(run_id)
         except FileNotFoundError:
             self._emit(ChatEvent("error", f"Run {run_id} has no recommendation.json."))
             return

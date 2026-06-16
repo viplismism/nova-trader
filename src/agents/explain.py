@@ -19,12 +19,13 @@ from pydantic import BaseModel, Field
 
 from src.schemas.context import RunContext
 from src.schemas.signals import Signal
-from src.schemas.views import FinancialsView, InsiderView, NewsSentimentView, PersonaView, PriceView
+from src.schemas.views import FilingsView, FinancialsView, InsiderView, NewsSentimentView, PersonaView, PriceView, WebResearchView
 from src.utils.llm import call_llm
+from src.utils.progress import progress
 
 logger = logging.getLogger(__name__)
 
-_LLM_NATIVE = {"warren_buffett"}  # already produces its own LLM reasoning
+_LLM_NATIVE = {"adaptive_research", "warren_buffett"}  # already produce their own LLM reasoning
 
 
 class _Explanation(BaseModel):
@@ -50,6 +51,9 @@ def _view_slice(view) -> str:
     keep tokens + hallucination surface small; never raises (a throw here would be
     swallowed upstream and silently skip narration)."""
     try:
+        if isinstance(view, WebResearchView):
+            sources = sorted({result.source for result in view.results})
+            return f"web results={len(view.results)}; sources={', '.join(sources[:3]) or 'none'}"
         if isinstance(view, PriceView):
             n = len(view.prices)
             if n >= 2 and view.prices[0].close:
@@ -65,6 +69,9 @@ def _view_slice(view) -> str:
             return f"news items={len(view.news)}; price bars={len(view.prices)}"
         if isinstance(view, InsiderView):
             return f"insider trades={len(view.trades)}"
+        if isinstance(view, FilingsView):
+            forms = sorted({f"{excerpt.form} {excerpt.fiscal_year}" for excerpt in view.excerpts})
+            return f"SEC excerpts={len(view.excerpts)}; filings={', '.join(forms[:3]) or 'none'}"
     except Exception:
         logger.debug("view slice failed", exc_info=True)
     return "no extra view summary"
@@ -166,6 +173,11 @@ def _council_call(ctx: RunContext, agent_id: str, board: str, recorder=None) -> 
     except Exception:
         logger.exception("council reasoning failed for %s", agent_id)
         return ""
+    finally:
+        # Risk and portfolio decisions are deterministic and already completed before
+        # this optional explanation call. Do not leave the activity row in retry/error
+        # state when only the narration layer failed or fell back.
+        progress.update_status(agent_id, None, "Done")
     return (out.explanation or "").strip()
 
 

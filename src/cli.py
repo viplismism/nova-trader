@@ -79,8 +79,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--agents", default="",
         help=f"Comma-separated agent ids (default: all). Available: {','.join(all_agent_ids())}",
     )
-    run.add_argument("--model-name", default=os.getenv("MODEL_NAME", "gpt-4.1"))
-    run.add_argument("--model-provider", default=os.getenv("MODEL_PROVIDER", "OpenAI"))
+    run.add_argument("--model-name", default=os.getenv("NOVA_MODEL_NAME", "MiniMax-M2.7"))
+    run.add_argument("--model-provider", default=os.getenv("NOVA_MODEL_PROVIDER", "MiniMax"))
     run.add_argument(
         "--portfolio-mode",
         choices=["research", "long_only", "long_short"],
@@ -102,6 +102,23 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     rerun.add_argument("run_id", help="Run id to replay")
     rerun.add_argument("--json", action="store_true")
     rerun.add_argument("--no-progress", action="store_true")
+
+    # ── nova debate <ticker> <question> ──
+    debate = sub.add_parser("debate", help="Research-desk debate: supervisor + 4 specialists + cited memo")
+    debate.add_argument("ticker", help="Ticker to research, e.g. NVDA")
+    debate.add_argument("question", nargs="+", help="The research question")
+    debate.add_argument("--horizon", default="6-12 months")
+    debate.add_argument("--source", choices=["filings", "web"], default="filings")
+    debate.add_argument("--fast", action="store_true", help="Haiku specialists + Opus bear (~5 min)")
+    debate.add_argument("--quick", action="store_true", help="Haiku specialists + Sonnet bear, no web (quickest, ~3-4 min)")
+
+    # ── nova web ──
+    web = sub.add_parser("web", help="Start the browser demo UI")
+    web.add_argument("--host", default=os.getenv("NOVA_WEB_HOST", "127.0.0.1"))
+    web.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")))
+    web.add_argument("--model-name", default=os.getenv("NOVA_MODEL_NAME", "claude-opus-4-8"))
+    web.add_argument("--model-provider", default=os.getenv("NOVA_MODEL_PROVIDER", "Anthropic"))
+    web.add_argument("--reload", action="store_true", help="Reload the web server on code changes")
 
     return p
 
@@ -383,8 +400,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
         print(f"No run found at {runs_root() / args.run_id}", file=sys.stderr)
         return 2
     try:
-        rec_data = RunRecorder.load_recommendation_dict(args.run_id)
-        recommendation = Recommendation.model_validate(rec_data)
+        recommendation = RunRecorder.load_recommendation(args.run_id)
     except FileNotFoundError:
         print(f"Run {args.run_id} has no recommendation.json (incomplete run?)", file=sys.stderr)
         return 2
@@ -426,6 +442,80 @@ def _cmd_rerun(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_web(args: argparse.Namespace) -> int:
+    os.environ["MODEL_NAME"] = args.model_name
+    os.environ["MODEL_PROVIDER"] = args.model_provider
+    from src.web.server import launch_web
+
+    return launch_web(args.host, args.port, reload=args.reload)
+
+
+def _cmd_debate(args: argparse.Namespace) -> int:
+    """One-shot research-desk debate printed to the terminal (additive; does not
+    touch the deterministic analyst pipeline)."""
+    import asyncio
+
+    from dotenv import load_dotenv as _ld
+
+    _ld(override=True)  # .env authoritative (avoid a stale shell ANTHROPIC_API_KEY)
+    from src.debate import USAGE, run_debate
+    from src.debate.recorder import DebateRecorder
+
+    ticker = args.ticker.upper()
+    question = " ".join(args.question)
+    recorder = DebateRecorder(ticker, question, args.horizon, args.source)
+
+    def emit(**ev) -> None:
+        recorder.event(**ev)
+        t = ev.get("type")
+        if t == "phase":
+            print(f"[{ev.get('phase')}] {ev.get('status')} {ev.get('detail', '')}", flush=True)
+        elif t == "tool_call":
+            bits = ev.get("query") or (", ".join(ev.get("results", [])[:3]) if ev.get("results") else "")
+            print(f"    {ev.get('agent', '')} {ev.get('tool', '')}: {bits}", flush=True)
+        elif t == "specialist":
+            extra = ""
+            if ev.get("status") == "done":
+                d = ev.get("draft") or {}
+                extra = f"-> {d.get('stance')} ({len(d.get('key_findings', []))} findings)"
+            print(f"  specialist {ev.get('key')}: {ev.get('status')} {extra}", flush=True)
+
+    async def driver():
+        return await run_debate(ticker, question, args.horizon, args.source,
+                                emit=emit, record=recorder.record,
+                                fast=args.fast or args.quick,
+                                bear_model="claude-sonnet-4-6" if args.quick else None,
+                                bear_web=not args.quick)
+
+    try:
+        result, _store = asyncio.run(driver())
+    except Exception as exc:  # noqa: BLE001
+        print(f"Debate failed: {type(exc).__name__}: {exc}")
+        return 1
+
+    run_id = recorder.save(result, str(USAGE))
+
+    memo = result.get("memo", {})
+    bar = "=" * 70
+    print(f"\n{bar}\n RESEARCH MEMO — {memo.get('ticker', ticker)}  "
+          f"({result.get('specialist_source', '?')})\n{bar}")
+    print(f" Conviction: {str(memo.get('conviction', '')).upper()}  |  "
+          f"Lean: {str(memo.get('directional_lean', '')).upper()}")
+    print(f"\n Bull: {memo.get('bull_case', '')}")
+    print(f" Base: {memo.get('base_case', '')}")
+    print(f" Bear: {memo.get('bear_case', '')}")
+    if memo.get("key_risks"):
+        print("\n Key risks:")
+        for r in memo["key_risks"]:
+            print(f"   • {r}")
+    cites = memo.get("citations", [])
+    if cites:
+        print(f"\n Citations ({len(cites)}): " + ", ".join(cites[:12]))
+    print(f"\n usage: {USAGE}")
+    print(f" saved trajectory: {runs_root() / run_id}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     load_dotenv()
     raw_argv = sys.argv[1:] if argv is None else argv
@@ -433,8 +523,8 @@ def main(argv: list[str] | None = None) -> int:
         if sys.stdin.isatty():
             return launch_chat(
                 console,
-                provider=os.getenv("MODEL_PROVIDER", "OpenAI"),
-                model=os.getenv("MODEL_NAME", "gpt-4.1-mini"),
+                provider=os.getenv("NOVA_MODEL_PROVIDER", "MiniMax"),
+                model=os.getenv("NOVA_MODEL_NAME", "MiniMax-M2.7"),
                 portfolio_mode=os.getenv("NOVA_PORTFOLIO_MODE", "research"),
             )
         parser = _build_arg_parser()
@@ -450,6 +540,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_show(args)
     if args.command == "rerun":
         return _cmd_rerun(args)
+    if args.command == "web":
+        return _cmd_web(args)
+    if args.command == "debate":
+        return _cmd_debate(args)
 
     parser.print_help()
     return 2

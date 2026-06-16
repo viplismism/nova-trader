@@ -136,6 +136,15 @@ class RunRecorder:
         return json.loads(path.read_text())
 
     @classmethod
+    def load_recommendation(cls, run_id: str, base_dir: Path | None = None):
+        """Load and validate a saved Recommendation. Single source of truth for the
+        load+validate the web server and CLI both need (raises FileNotFoundError if
+        the run has no recommendation.json)."""
+        from src.schemas.signals import Recommendation
+
+        return Recommendation.model_validate(cls.load_recommendation_dict(run_id, base_dir))
+
+    @classmethod
     def load_llm_calls(cls, run_id: str, base_dir: Path | None = None) -> dict[str, list[dict]]:
         """Read llm.jsonl and group records by agent_id. Safe to call while a run is
         still writing: append_llm_call writes one whole line at a time, so at worst the

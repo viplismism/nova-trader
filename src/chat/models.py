@@ -10,6 +10,8 @@ from pydantic import BaseModel, Field
 DEFAULT_AGENTS = [
     "technical",
     "fundamentals",
+    "sec_filings",
+    "web_research",
     "growth",
     "valuation",
     "news_sentiment",
@@ -18,6 +20,7 @@ DEFAULT_AGENTS = [
 ]
 
 PROVIDERS = [
+    "Anthropic",
     "OpenAI",
     "MiniMax",
     "DeepSeek",

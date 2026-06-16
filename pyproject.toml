@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Multi-agent AI trading recommendation system — research, signals, risk, and portfolio decision support"
 authors = []
 readme = "README.md"
+include = ["src/web/static/index.html"]
 packages = [
     { include = "src", from = "." },
 ]
@@ -12,6 +13,7 @@ packages = [
 python = "^3.11"
 
 # LLM providers
+anthropic = ">=0.97,<1.0"
 openai = ">=2.0,<3.0"
 
 # Data & computation
@@ -34,6 +36,8 @@ colorama = "^0.4.6"
 questionary = "^2.1.0"
 rich = "^13.9.4"
 prompt_toolkit = "^3.0.0"
+fastapi = ">=0.110,<1.0"
+uvicorn = {extras = ["standard"], version = ">=0.29,<1.0"}
 
 # Date handling
 python-dateutil = "^2.8.0"

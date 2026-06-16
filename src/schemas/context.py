@@ -14,8 +14,8 @@ from src.schemas.portfolio import Portfolio
 class ModelConfig(BaseModel):
     """Which LLM to use for this run."""
 
-    provider: str = "OpenAI"
-    name: str = "gpt-4.1"
+    provider: str = "MiniMax"
+    name: str = "MiniMax-M2.7"
 
 
 class RunRequest(BaseModel):

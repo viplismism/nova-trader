@@ -14,19 +14,25 @@ from pydantic import BaseModel
 from src.schemas.context import RunContext
 from src.schemas.signals import Signal
 from src.schemas.views import (
+    AdaptiveResearchView,
+    FilingsView,
     FinancialsView,
     InsiderView,
     NewsSentimentView,
     PersonaView,
     PriceView,
+    WebResearchView,
 )
+from src.agents.adaptive_research import run_adaptive_research_agent
 from src.agents.fundamentals import run_fundamentals_agent
 from src.agents.growth import run_growth_agent
 from src.agents.insider_sentiment import run_insider_sentiment_agent
 from src.agents.news_sentiment import run_news_sentiment_agent
+from src.agents.sec_filings import run_sec_filings_agent
 from src.agents.technical import run_technical_agent
 from src.agents.valuation import run_valuation_agent
 from src.agents.warren_buffett import run_warren_buffett_agent
+from src.agents.web_research import run_web_research_agent
 
 
 @dataclass(frozen=True)
@@ -76,6 +82,24 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
         display_name="News Sentiment Analyst",
         view_class=NewsSentimentView,
         runner=run_news_sentiment_agent,
+    ),
+    "web_research": AgentSpec(
+        agent_id="web_research",
+        display_name="Web Research Analyst",
+        view_class=WebResearchView,
+        runner=run_web_research_agent,
+    ),
+    "sec_filings": AgentSpec(
+        agent_id="sec_filings",
+        display_name="SEC Filings Analyst",
+        view_class=FilingsView,
+        runner=run_sec_filings_agent,
+    ),
+    "adaptive_research": AgentSpec(
+        agent_id="adaptive_research",
+        display_name="Adaptive Research Analyst",
+        view_class=AdaptiveResearchView,
+        runner=run_adaptive_research_agent,
     ),
     "insider_sentiment": AgentSpec(
         agent_id="insider_sentiment",

@@ -41,6 +41,7 @@ class DataModule(str, Enum):
     FUNDAMENTALS = "fundamentals"
     VALUATION = "valuation"
     NEWS = "news"
+    WEB_RESEARCH = "web_research"
     SENTIMENT = "sentiment"
     INSIDER_TRADES = "insider_trades"
     PORTFOLIO = "portfolio"

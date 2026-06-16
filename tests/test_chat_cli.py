@@ -340,6 +340,48 @@ def test_recommendation_verdict_uses_structured_run_not_model_prompt():
     assert "short-vs-put" in text
 
 
+def test_recommendation_verdict_strips_think_tokens_from_agent_reasoning():
+    recommendation = Recommendation(
+        run_id="test-run",
+        as_of="2026-05-31T00:00:00Z",
+        tickers=["AAPL"],
+        signals=[
+            Signal(
+                agent_id="news_sentiment",
+                ticker="AAPL",
+                direction="neutral",
+                confidence=0.56,
+                reasoning='<think>private chain</think>{"explanation":"Headlines were mostly neutral."}',
+            )
+        ],
+        consensus={
+            "AAPL": Consensus(
+                ticker="AAPL",
+                direction="neutral",
+                confidence=0.56,
+                weighted_score=0.0,
+            )
+        },
+        decisions=Decisions(
+            per_ticker={
+                "AAPL": TickerDecision(
+                    ticker="AAPL",
+                    action="hold",
+                    confidence=0.56,
+                    reasoning="Neutral consensus.",
+                )
+            }
+        ),
+        summary="AAPL: consensus=neutral, action=hold",
+    )
+
+    text = _recommendation_verdict_text(recommendation)
+
+    assert "Headlines were mostly neutral" in text
+    assert "<think>" not in text
+    assert "private chain" not in text
+
+
 def test_unknown_chat_prompt_gets_intro_instead_of_ticker_error():
     console = Console(record=True)
     chat = NovaChat(console, ChatSettings(provider="OpenAI", model="gpt-4o-mini"))

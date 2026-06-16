@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nova Trader</title>
+  <style>
+    :root {
+      --bg: #090a0a; --panel: #101312; --panel-2: #151817; --ink: #e8ece9;
+      --muted: #969d98; --line: #303733; --teal: #8ec9c3; --green: #a7c080;
+      --amber: #dbbc7f; --red: #e67e80; --blue: #8aa6d9; --shadow: rgba(0,0,0,0.24);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 14px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      height: 100vh; overflow: hidden;
+    }
+    button, input, select, textarea { font: inherit; }
+
+    .shell { height: 100vh; display: grid; grid-template-rows: auto 1fr auto; }
+
+    header {
+      border-bottom: 1px solid var(--line); background: #0f1110; padding: 10px 16px;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; color: var(--teal); font-weight: 800; }
+    .brand-mark { width: 10px; height: 10px; background: var(--teal); transform: rotate(45deg); }
+    .mode-toggle { display: flex; gap: 6px; }
+    .mode-toggle button {
+      border: 1px solid var(--line); background: #121513; color: var(--muted);
+      padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 700;
+    }
+    .mode-toggle button.on { background: var(--teal); color: #0a0d0b; border-color: var(--teal); }
+    .state { color: var(--amber); font-weight: 700; min-width: 90px; text-align: right; }
+
+    main {
+      display: grid;
+      grid-template-columns: minmax(250px, 300px) minmax(440px, 1fr) minmax(300px, 400px);
+      gap: 12px; padding: 12px; min-height: 0; overflow: hidden;
+    }
+    .panel {
+      min-height: 0; border: 1px solid var(--line); background: var(--panel);
+      border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;
+    }
+    .panel > h2 {
+      margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--teal);
+      font-size: 13px; text-transform: uppercase; flex: none;
+    }
+    .panel-body { min-height: 0; overflow: auto; }
+
+    form.controls { display: grid; gap: 9px; padding: 12px; border-bottom: 1px solid var(--line); flex: none; }
+    label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; text-transform: uppercase; }
+    input, select, textarea {
+      width: 100%; color: var(--ink); background: #080908; border: 1px solid #424943;
+      border-radius: 6px; padding: 8px 10px; outline: none;
+    }
+    textarea { resize: vertical; min-height: 60px; }
+    input:focus, select:focus, textarea:focus { border-color: var(--teal); }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .button-row { display: flex; gap: 9px; align-items: center; }
+    button.primary {
+      border: 1px solid #5e6962; background: #dfe5df; color: #0a0d0b; border-radius: 6px;
+      padding: 9px 13px; font-weight: 800; cursor: pointer;
+    }
+    button.secondary { border: 1px solid #5e6962; background: #121513; color: var(--ink); border-radius: 6px; padding: 9px 13px; cursor: pointer; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .hide { display: none !important; }
+
+    .activity { overflow: auto; padding: 8px; min-height: 0; }
+    .activity-row {
+      display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start;
+      padding: 6px; border-radius: 6px; color: var(--muted); cursor: pointer;
+    }
+    .activity-row.done { color: var(--ink); } .activity-row.running { color: var(--amber); }
+    .activity-row.selected { background: #1e2521; }
+    .dot { text-align: center; color: var(--amber); font-weight: 900; }
+    .done .dot { color: var(--green); } .failed .dot { color: var(--red); }
+    .activity-name { color: inherit; font-weight: 600; overflow-wrap: anywhere; }
+    .activity-status { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; margin-top: 2px; }
+
+    .results { padding: 10px 12px; display: grid; gap: 10px; align-content: start; }
+    .empty { color: var(--muted); padding: 14px; }
+
+    /* citation chips */
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+      border: 1px solid #2f3a36; background: #0e1311; color: var(--teal);
+      border-radius: 999px; padding: 3px 9px; font-size: 11px; text-decoration: none;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chip.filing { color: var(--amber); border-color: #3a352a; }
+    .chip:hover { border-color: var(--teal); }
+
+    /* signal cards */
+    .signal-card { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 12px; display: grid; gap: 10px; }
+    .card-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 8px; }
+    .ticker { color: var(--teal); font-size: 18px; font-weight: 900; }
+    .action { text-transform: uppercase; font-weight: 900; color: var(--amber); }
+    .action.buy, .action.cover, .stance.bullish { color: var(--green); }
+    .action.sell, .action.short, .stance.bearish, .failed { color: var(--red); }
+    .stance.neutral { color: var(--amber); }
+    .facts { display: grid; gap: 6px; }
+    .fact { display: grid; grid-template-columns: minmax(120px,160px) 1fr; gap: 12px; align-items: baseline; }
+    .fact span { color: var(--muted); text-transform: lowercase; } .fact strong { color: var(--ink); font-weight: 600; }
+    .agent-row { display: grid; gap: 4px; padding: 9px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .agent-row:hover { background: #141917; }
+    .agent-top { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+    .agent-name { color: var(--ink); font-weight: 700; } .agent-reason { color: var(--muted); font-size: 13px; }
+    .section-title { margin: 4px 0 0; color: var(--teal); font-size: 13px; text-transform: uppercase; }
+
+    /* debate */
+    .desk-meta { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+    .desk-meta span { color: var(--muted); text-transform: lowercase; }
+    .desk-meta strong { color: var(--ink); font-weight: 600; }
+    .plan-box { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 12px; }
+    .plan-q { color: var(--ink); margin: 0 0 10px; }
+    .mandate { border-top: 1px solid var(--line); padding: 8px 0; }
+    .mandate b { color: var(--teal); text-transform: uppercase; font-size: 12px; }
+    .mandate p { margin: 4px 0 0; color: var(--muted); }
+    .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .spec-card { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 12px; display: grid; gap: 8px; cursor: pointer; }
+    .spec-card.researching { border-color: var(--amber); }
+    .spec-head { display: flex; align-items: baseline; justify-content: space-between; }
+    .spec-name { color: var(--ink); font-weight: 800; text-transform: uppercase; font-size: 13px; }
+    .spec-status { color: var(--amber); font-size: 12px; }
+    .spec-status.done { color: var(--green); }
+    .finding { border-top: 1px solid #242a27; padding-top: 6px; font-size: 13px; }
+    .finding .claim { color: var(--ink); } .finding .ev { color: var(--muted); }
+    .memo-box { border: 1px solid var(--teal); background: #0d1211; border-radius: 8px; padding: 14px; display: grid; gap: 10px; }
+    .memo-h { display: flex; gap: 14px; align-items: baseline; }
+    .bear-box { border: 1px solid #3a2a2a; background: #120e0e; border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+    .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
+    .pill.high { color: var(--green); border-color: #2f4a32; } .pill.medium { color: var(--amber); }
+    .pill.low { color: var(--muted); } .pill.constructive { color: var(--green); } .pill.cautious { color: var(--red); }
+
+    /* inspector */
+    /* overflow-x hidden + overflow-wrap everywhere + min-width:0 on grid items so long
+       prompts / URLs / citation lists WRAP inside the fixed panel instead of running off. */
+    .inspector-body { padding: 12px 14px; display: grid; gap: 12px; color: var(--muted); overflow-x: hidden; overflow-wrap: anywhere; }
+    .inspector-body * { min-width: 0; }
+    .inspect-title { color: var(--ink); font-weight: 800; }
+    .inspect-label { color: var(--teal); text-transform: uppercase; font-size: 11px; font-weight: 800; }
+    .inspect-block { display: grid; gap: 6px; min-width: 0; }
+    .log-line { display: grid; grid-template-columns: 64px minmax(0,1fr); gap: 10px; border-bottom: 1px solid #242a27; padding-bottom: 5px; }
+    .log-time { color: var(--muted); font-size: 12px; } .log-text { color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
+    .llm-call { border: 1px solid #29312d; border-radius: 6px; padding: 8px; display: grid; gap: 6px; font-size: 12px; }
+    .llm-meta { color: var(--muted); }
+    .llm-sub { color: var(--teal); font-size: 11px; text-transform: uppercase; font-weight: 700; }
+    .llm-text {
+      white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; background: #080a09; border: 1px solid #222a26;
+      border-radius: 5px; padding: 7px 8px; max-height: 260px; overflow-y: auto; overflow-x: hidden; color: var(--ink); font-size: 12px;
+    }
+    details.llm-fold > summary { cursor: pointer; color: var(--muted); list-style: none; }
+    details.llm-fold > summary::-webkit-details-marker { display: none; }
+    details.llm-fold[open] > summary { color: var(--teal); }
+
+    /* chat dock */
+    .chatdock { height: 34vh; min-height: 180px; border-top: 1px solid var(--line); background: #0d0f0e; display: flex; flex-direction: column; }
+    .chat-head { padding: 7px 14px; border-bottom: 1px solid var(--line); color: var(--teal); font-size: 12px; text-transform: uppercase; display: flex; justify-content: space-between; }
+    .chat-msgs { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
+    .bubble { max-width: 80%; padding: 9px 12px; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .bubble.user { align-self: flex-end; background: #1d2422; color: var(--ink); border: 1px solid #2c3531; }
+    .bubble.nova { align-self: flex-start; background: #11201d; color: var(--ink); border: 1px solid #234039; }
+    .bubble.nova .who { color: var(--teal); font-size: 11px; font-weight: 800; display: block; margin-bottom: 4px; }
+    .chat-input { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); align-items: flex-end; }
+    .chat-input textarea { min-height: 38px; max-height: 120px; }
+    .saved { color: var(--muted); font-size: 11px; padding: 0 14px 6px; overflow-wrap: anywhere; }
+
+    @media (max-width: 1100px) {
+      main { grid-template-columns: 1fr 1fr; grid-auto-rows: minmax(160px, 1fr); }
+      .col-inspector { grid-column: 1 / -1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><span class="brand-mark"></span><span>Nova Trader</span></div>
+      <div class="mode-toggle">
+        <button id="modeSignals" class="on" type="button">Signals</button>
+        <button id="modeDebate" type="button">Debate</button>
+      </div>
+      <div id="runState" class="state">ready</div>
+    </header>
+
+    <main>
+      <section class="panel">
+        <h2 id="runTitle">Run</h2>
+        <!-- Signals (deterministic) controls -->
+        <form id="runForm" class="controls">
+          <label>Tickers
+            <input id="tickers" value="AAPL" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="grid-2">
+            <label>Mode
+              <select id="mode">
+                <option value="research">research</option>
+                <option value="long_only">long only</option>
+                <option value="long_short">long short</option>
+              </select>
+            </label>
+            <label>Agents
+              <select id="agents">
+                <option value="technical,fundamentals,news_sentiment,web_research,sec_filings">core council</option>
+                <option value="technical,fundamentals,news_sentiment,web_research,sec_filings,adaptive_research">adaptive research</option>
+                <option value="">default set</option>
+                <option value="technical,fundamentals,growth,valuation,news_sentiment,web_research,sec_filings,adaptive_research,insider_sentiment,warren_buffett">full council</option>
+              </select>
+            </label>
+          </div>
+          <div class="grid-2">
+            <label>Provider <input id="provider" value="Anthropic" autocomplete="off" spellcheck="false"></label>
+            <label>Model <input id="model" value="claude-opus-4-8" autocomplete="off" spellcheck="false"></label>
+          </div>
+          <div class="button-row">
+            <button id="runButton" class="primary" type="submit">Analyze</button>
+            <button id="stopButton" class="secondary" type="button" disabled>Close</button>
+          </div>
+        </form>
+        <!-- Debate controls -->
+        <form id="debateForm" class="controls hide">
+          <label>Ticker <input id="dTicker" value="NVDA" autocomplete="off" spellcheck="false"></label>
+          <label>Research question
+            <textarea id="dQuestion" spellcheck="true">Is the data-center / AI accelerator growth story still intact over the next year?</textarea>
+          </label>
+          <div class="grid-2">
+            <label>Horizon
+              <select id="dHorizon">
+                <option value="6-12 months">6-12 months</option>
+                <option value="3-6 months">3-6 months</option>
+                <option value="12-24 months">12-24 months</option>
+              </select>
+            </label>
+            <label>Evidence
+              <select id="dSource">
+                <option value="filings">SEC filings (cited)</option>
+                <option value="web">live web search</option>
+              </select>
+            </label>
+          </div>
+          <label>Speed
+            <select id="dFast">
+              <option value="full">full — Sonnet specialists + Opus bear (~8 min)</option>
+              <option value="fast">fast — Haiku specialists + Opus bear (~5 min)</option>
+              <option value="quick">quick — Haiku specialists + Sonnet bear, no web (~3-4 min)</option>
+            </select>
+          </label>
+          <div class="button-row">
+            <button id="debateButton" class="primary" type="submit">Run Debate</button>
+            <button id="debateStop" class="secondary" type="button" disabled>Close</button>
+          </div>
+        </form>
+        <h2>Activity</h2>
+        <div id="activity" class="activity"><div class="empty">No activity yet.</div></div>
+      </section>
+
+      <section class="panel">
+        <h2 id="resultsTitle">Signal Cards</h2>
+        <div id="results" class="panel-body results"><div class="empty">Run a ticker to populate results.</div></div>
+      </section>
+
+      <section class="panel col-inspector">
+        <h2>Inspector</h2>
+        <div id="inspector" class="panel-body inspector-body"><div class="empty">Click an analyst, specialist, or activity row.</div></div>
+      </section>
+    </main>
+
+    <section class="chatdock">
+      <div class="chat-head"><span>Chat — ask about this run</span><span id="chatHint"></span></div>
+      <div id="chatMsgs" class="chat-msgs"><div class="empty">The run verdict appears here; then ask follow-ups.</div></div>
+      <div id="saved" class="saved"></div>
+      <form id="askForm" class="chat-input">
+        <textarea id="question" placeholder="Ask Nova about this run…" spellcheck="true"></textarea>
+        <button id="askButton" class="primary" type="submit" disabled>Ask</button>
+      </form>
+    </section>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    // Per-mode buckets so switching Signals⇄Debate never wipes the other's work.
+    function freshMode(){ return { runId:null, activity:new Map(), timeline:[], selectedKey:null, manualSelection:false, cards:[], llmLogs:{}, debate:null, chat:[], saved:"" }; }
+    const state = {
+      mode: "signals", runSource: null, debateSource: null, askSource: null,
+      modes: { signals: freshMode(), debate: freshMode() },
+    };
+    const M = () => state.modes[state.mode];
+
+    const esc = (v) => String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+    const pct = (v) => `${Math.round(Number(v||0)*100)}%`;
+    const isUrl = (s) => /^https?:\/\//i.test(String(s||""));
+    const setState = (s) => $("runState").textContent = s;
+    function paragraphs(t){ const c=String(t||"").trim(); if(!c) return "<p>-</p>"; return c.split(/\n{2,}/).map(p=>`<p>${esc(p).replace(/\*\*/g,"")}</p>`).join(""); }
+
+    // ── citation chips ── (only emit an <a> for http(s) URLs — never a javascript:/data: href)
+    function webChip(s){
+      const label=esc(s.title||s.url);
+      return isUrl(s.url)
+        ? `<a class="chip" href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(s.url)}">${label}</a>`
+        : `<span class="chip" title="${esc(s.url||"")}">${label}</span>`;
+    }
+    function filingChip(s){
+      const label = `${esc(s.form||"filing")}${s.item?(" · "+esc(s.item)):""}${s.fiscal_year?(" · "+esc(s.fiscal_year)):""}`;
+      return isUrl(s.url)
+        ? `<a class="chip filing" href="${esc(s.url)}" target="_blank" rel="noopener" title="${esc(s.chunk_id||"")}">${label}</a>`
+        : `<span class="chip filing" title="${esc(s.chunk_id||"")}">${label||esc(s.chunk_id)}</span>`;
+    }
+    function citationChips(web, filings){
+      const parts = [...(web||[]).map(webChip), ...(filings||[]).map(filingChip)];
+      return parts.length ? `<div class="chips">${parts.join("")}</div>` : "";
+    }
+    // Extract only REAL citations from each string and chip them. The model sometimes
+    // dumps prose into a citation/source (e.g. "NVDA 8-K Q4 FY26 CFO commentary"), so we
+    // pull out filing chunk-IDs (NVDA-10K-0309) and URLs and ignore everything else —
+    // otherwise every stray word becomes a junk chip.
+    const CHUNK_ID_RE = /\b[A-Z]{1,6}-\d{1,2}[A-Z]-\d{2,5}\b/g;   // e.g. NVDA-10K-0309
+    function rawCiteChips(cites){
+      const urls=(M().debate&&M().debate.citation_urls)||{};
+      const seen=new Set(); const parts=[];
+      const addUrl=(u)=>{ if(seen.has(u))return; seen.add(u); parts.push(`<a class="chip" href="${esc(u)}" target="_blank" rel="noopener">${esc(u.replace(/^https?:\/\//,"").slice(0,40))}</a>`); };
+      const addId=(id)=>{ if(seen.has(id))return; seen.add(id);
+        parts.push(urls[id]
+          ? `<a class="chip filing" href="${esc(urls[id])}" target="_blank" rel="noopener" title="open ${esc(id)} on SEC EDGAR">${esc(id)}</a>`
+          : `<span class="chip filing">${esc(id)}</span>`); };
+      for(const c of cites||[]){
+        const s=String(c||"").trim(); if(!s) continue;
+        if(isUrl(s)){ addUrl(s); continue; }            // a clean URL citation
+        (s.match(/https?:\/\/\S+/g)||[]).forEach(addUrl); // URLs embedded in prose
+        (s.match(CHUNK_ID_RE)||[]).forEach(addId);        // filing chunk-IDs in prose
+      }
+      return parts.length ? `<div class="chips">${parts.join("")}</div>` : "";
+    }
+
+    // ── activity + inspector (shared by both modes) ──
+    function activityClass(r){ const s=String(r.status||"").toLowerCase(); if(s.includes("done")) return "done"; if(s.includes("error")||s.includes("fail")) return "failed"; return "running"; }
+    function activityDot(r){ const k=activityClass(r); return k==="done"?"ok":k==="failed"?"x":">"; }
+    function renderActivity(){
+      const rows=[...M().activity.values()];
+      if(!rows.length){ $("activity").innerHTML='<div class="empty">No activity yet.</div>'; return; }
+      $("activity").innerHTML = rows.map(r=>{
+        const k=activityClass(r); const ticker=r.ticker?` [${r.ticker}]`:"";
+        const name=`${r.agent||"agent"}${ticker}`.replaceAll("_"," ");
+        const sel=(`${r.agent||"agent"}:${r.ticker||""}`)===M().selectedKey?" selected":"";
+        return `<div class="activity-row ${k}${sel}" data-key="${esc((r.agent||"agent")+":"+(r.ticker||""))}">
+          <span class="dot">${activityDot(r)}</span>
+          <div><div class="activity-name">${esc(name)}</div><div class="activity-status">${esc(r.analysis||r.status||"working")}</div></div></div>`;
+      }).join("");
+      document.querySelectorAll(".activity-row[data-key]").forEach(row=>row.addEventListener("click",()=>{
+        M().selectedKey=row.dataset.key; M().manualSelection=true; renderActivity(); renderInspector();
+      }));
+    }
+    function addActivity(mode,row){
+      const b=state.modes[mode];
+      const key=`${row.agent||"agent"}:${row.ticker||""}`;
+      b.activity.set(key,row);
+      b.timeline.push({...row,key,received_at:new Date().toLocaleTimeString()});
+      if(!b.manualSelection) b.selectedKey=key;
+      if(mode===state.mode){ renderActivity(); renderInspector(); }
+    }
+    // When a run completes, nothing should still read "running/deciding" — flip any
+    // lingering non-terminal rows to done (leaves genuine errors/failures alone).
+    function finalizeActivity(mode){
+      const b=state.modes[mode];
+      for(const row of b.activity.values()){
+        if(activityClass(row)==="running"){ row.status="done"; row.analysis="done"; }
+      }
+      if(mode===state.mode) renderActivity();
+    }
+    function selectedSignal(agent,ticker){
+      for(const card of M().cards||[]) for(const sg of card.agents||[])
+        if(sg.agent_id===agent && (!ticker||card.ticker===ticker)) return sg;
+      return null;
+    }
+    function renderInspector(){
+      if(!M().selectedKey){ $("inspector").innerHTML='<div class="empty">Click an analyst, specialist, or activity row.</div>'; return; }
+      const [agent,ticker=""]=M().selectedKey.split(":");
+      const events=M().timeline.filter(r=>r.key===M().selectedKey);
+      const latest=M().activity.get(M().selectedKey)||{};
+      const sg=selectedSignal(agent,ticker);
+      const llm=M().llmLogs?.[agent]||[];
+      // debate specialist?
+      const spec=M().debate?.specialists?.[agent];
+      const evHtml=events.length?events.map(r=>`<div class="log-line"><span class="log-time">${esc(r.received_at||"")}</span><span class="log-text">${esc(r.analysis||r.status||"working")}</span></div>`).join(""):'<div class="empty">No timeline yet.</div>';
+      let sigHtml="";
+      if(sg){
+        sigHtml=`<div class="inspect-block"><div class="inspect-label">Signal</div>
+          <div>${esc(sg.direction)} ${pct(sg.confidence)} · ${esc(sg.status)}</div>
+          <div>${esc(sg.error||sg.reasoning||"No reasoning recorded.")}</div>
+          ${(sg.key_factors||[]).slice(0,6).map(f=>`<div class="log-text">${esc(f)}</div>`).join("")}
+          ${citationChips(sg.web_sources, sg.filing_sources)}</div>`;
+      }
+      if(spec && spec.draft){
+        const d=spec.draft;
+        sigHtml+=`<div class="inspect-block"><div class="inspect-label">Specialist findings</div>
+          <div class="stance ${esc(d.stance)}">${esc(d.stance)}</div>
+          ${(d.key_findings||[]).map(f=>`<div class="finding"><div class="claim">${esc(f.claim)}</div><div class="ev">${esc(f.evidence)}</div>${rawCiteChips([f.source])}</div>`).join("")}</div>`;
+      }
+      const llmHtml=llm.length?`<div class="inspect-block"><div class="inspect-label">LLM Log (${llm.length} call${llm.length>1?"s":""})</div>${llm.map((c,i)=>`
+        <div class="llm-call">
+          <div class="llm-meta">#${i+1} · ${esc(c.provider)} · ${esc(c.model)} · attempt ${esc(c.attempt||"-")}</div>
+          <div class="llm-meta">${esc(c.prompt_tokens||0)} in / ${esc(c.completion_tokens||0)} out · ${esc(c.latency_ms||0)}ms${c.seed!=null?` · seed ${esc(c.seed)}`:""}</div>
+          ${c.error?`<div class="failed">${esc(c.error)}</div>`:""}
+          ${c.response?`<div class="llm-sub">Response</div><div class="llm-text">${esc(c.response)}</div>`:""}
+          ${c.prompt?`<details class="llm-fold"><summary>▸ Full prompt (${c.prompt.length} chars)</summary><div class="llm-text">${esc(c.prompt)}</div></details>`:""}
+        </div>`).join("")}</div>`:"";
+      $("inspector").innerHTML=`<div class="inspect-title">${esc((agent||"").replaceAll("_"," "))}${ticker?` [${esc(ticker)}]`:""}</div>
+        <div class="inspect-block"><div class="inspect-label">Current</div><div>${esc(latest.analysis||latest.status||"working")}</div></div>
+        <div class="inspect-block"><div class="inspect-label">Activity Log</div>${evHtml}</div>${sigHtml}${llmHtml}`;
+    }
+
+    // ── chat dock (per-mode, data-backed so it survives mode toggles) ──
+    function renderChat(){
+      const msgs=M().chat;
+      $("chatMsgs").innerHTML = msgs.length ? msgs.map(m=> m.role==="user"
+        ? `<div class="bubble user">${esc(m.text)}</div>`
+        : `<div class="bubble nova"><span class="who">${esc(m.who||"Nova")}</span>${m.html||paragraphs(m.text)}</div>`).join("")
+        : '<div class="empty">The run verdict appears here; then ask follow-ups.</div>';
+      $("chatMsgs").scrollTop=$("chatMsgs").scrollHeight;
+      $("saved").textContent=M().saved||"";
+    }
+    function pushChat(mode, msg){ state.modes[mode].chat.push(msg); if(mode===state.mode) renderChat(); return msg; }
+    function pushVerdict(mode, text, who){ pushChat(mode,{role:"nova",who:who||"Nova — verdict",text}); }
+
+    // ── signal cards (deterministic mode) ──
+    function renderCard(card){
+      const votes=card.vote_summary||{}; const action=String(card.action||"hold").toLowerCase();
+      const agents=(card.agents||[]).map(a=>{
+        const stance=a.status==="ok"?`${a.direction} ${pct(a.confidence)}`:a.status;
+        const reason=a.error||a.reasoning||"No reasoning supplied.";
+        return `<div class="agent-row" data-key="${esc(a.agent_id+":"+card.ticker)}">
+          <div class="agent-top"><span class="agent-name">${esc(a.label)}</span><span class="stance ${esc(a.direction)}">${esc(stance)}</span></div>
+          <div class="agent-reason">${esc(reason)}</div>
+          ${citationChips(a.web_sources, a.filing_sources)}</div>`;
+      }).join("");
+      return `<article class="signal-card">
+        <div class="card-head"><div class="ticker">${esc(card.ticker)}</div><div class="action ${esc(action)}">${esc(action)} ${pct(card.action_confidence)}</div></div>
+        <div class="facts">
+          <div class="fact"><span>consensus</span><strong>${esc(card.consensus_direction)} ${pct(card.consensus_confidence)}</strong></div>
+          <div class="fact"><span>votes</span><strong>${votes.bullish||0} bull / ${votes.bearish||0} bear / ${votes.neutral||0} neutral</strong></div>
+          <div class="fact"><span>decision</span><strong>${esc(card.decision_reasoning||"-")}</strong></div>
+        </div>
+        <h3 class="section-title">Analysts & Evidence</h3>
+        <div>${agents||'<div class="empty">No analyst signals.</div>'}</div>
+        ${((card.key_risks||[]).length||(card.what_would_change||[]).length)?`<h3 class="section-title">Decisions & Why</h3><div class="facts">
+          ${(card.key_risks||[]).map(r=>`<div class="fact"><span>risk</span><strong>${esc(r)}</strong></div>`).join("")}
+          ${(card.what_would_change||[]).map(r=>`<div class="fact"><span>changes if</span><strong>${esc(r)}</strong></div>`).join("")}
+        </div>`:""}
+      </article>`;
+    }
+    function bindAgentRows(){
+      document.querySelectorAll(".agent-row[data-key]").forEach(row=>row.addEventListener("click",()=>{
+        M().selectedKey=row.dataset.key; M().manualSelection=true; renderActivity(); renderInspector();
+      }));
+    }
+
+    // ── debate (research desk) ──
+    const SPEC_LABELS={fundamental:"Fundamental",sentiment:"Sentiment",valuation:"Valuation",macro:"Macro"};
+    const SPEC_SUB={fundamental:"financials & segments",sentiment:"news & narrative",valuation:"multiples & scenarios",macro:"demand & competition"};
+    function renderDebate(){
+      const d=M().debate; if(!d){ return; }
+      let html="";
+      html+=`<div class="desk-meta"><span>desk</span> <strong>${esc(d.ticker||"")} · ${esc(d.source||"filings")} · ${esc(d.horizon||"")}${d.speed&&d.speed!=="full"?" · "+esc(d.speed):""}</strong></div>`;
+      if(d.plan){
+        const fa=d.plan.focus_areas||{};
+        html+=`<div class="plan-box"><p class="plan-q">${esc(d.plan.restated_question||"")}</p>
+          ${Object.keys(SPEC_LABELS).map(k=>`<div class="mandate"><b>${esc(SPEC_LABELS[k])}</b><p>${esc(fa[k]||"")}</p></div>`).join("")}</div>`;
+      }
+      html+=`<h3 class="section-title">Specialists${d.source?` · ${esc(d.source)}`:""}</h3><div class="spec-grid">`;
+      for(const k of Object.keys(SPEC_LABELS)){
+        const s=d.specialists[k]||{status:"queued"};
+        const cls=s.status==="researching"?" researching":"";
+        const stClass=s.status==="done"?"done":"";
+        const statusText=s.status==="done"?(s.draft?`${s.draft.stance}`:"done"):s.status==="researching"?"researching…":"queued";
+        let body="";
+        if(s.draft){
+          body=`<div class="agent-reason">${esc(s.draft.summary||"")}</div>
+            ${(s.draft.key_findings||[]).slice(0,5).map(f=>`<div class="finding"><div class="claim">${esc(f.claim)}</div><div class="ev">${esc(f.evidence)}</div>${rawCiteChips([f.source])}</div>`).join("")}`;
+        }
+        html+=`<div class="spec-card${cls}" data-key="${esc(k+":")}">
+          <div class="spec-head"><span class="spec-name">${esc(SPEC_LABELS[k])}</span><span class="spec-status ${stClass} stance ${esc(s.draft?.stance||"")}">${esc(statusText)}</span></div>
+          <div class="agent-reason" style="font-size:11px">${esc(SPEC_SUB[k])}</div>${body}</div>`;
+      }
+      html+=`</div>`;
+      if(d.bear){
+        html+=`<h3 class="section-title">Bear challenge</h3><div class="bear-box">
+          <div><b style="color:var(--red)">Biggest risk:</b> ${esc(d.bear.biggest_risk||"")}</div>
+          ${(d.bear.refutations||[]).map(r=>`<div class="finding"><div class="claim">${esc(r.target_claim)}</div><div class="ev">${esc(r.refutation)} <span class="pill ${esc(r.severity)}">${esc(r.severity)}</span></div></div>`).join("")}
+          ${(d.bear.disconfirming_evidence||[]).map(e=>`<div class="ev">• ${esc(e)}</div>`).join("")}</div>`;
+      }
+      if(d.memo){
+        const m=d.memo;
+        html+=`<h3 class="section-title">Memo</h3><div class="memo-box">
+          <div class="memo-h"><span class="ticker">${esc(m.ticker)}</span><span class="pill ${esc(m.conviction)}">conviction ${esc(m.conviction)}</span><span class="pill ${esc(m.directional_lean)}">${esc(m.directional_lean)}</span></div>
+          <div><b style="color:var(--green)">Bull:</b> ${esc(m.bull_case)}</div>
+          <div><b style="color:var(--ink)">Base:</b> ${esc(m.base_case)}</div>
+          <div><b style="color:var(--red)">Bear:</b> ${esc(m.bear_case)}</div>
+          ${(m.key_risks||[]).length?`<div><b>Key risks:</b><br>${(m.key_risks||[]).map(r=>`• ${esc(r)}`).join("<br>")}</div>`:""}
+          ${(m.what_would_change_my_mind||[]).length?`<div><b>What would change the call:</b><br>${(m.what_would_change_my_mind||[]).map(r=>`• ${esc(r)}`).join("<br>")}</div>`:""}
+          <div><div class="inspect-label">Citations (${(m.citations||[]).length})</div>${rawCiteChips(m.citations)}</div>
+        </div>`;
+      }
+      $("results").innerHTML=html||'<div class="empty">Running the desk…</div>';
+      document.querySelectorAll(".spec-card[data-key]").forEach(c=>c.addEventListener("click",()=>{
+        M().selectedKey=c.dataset.key; M().manualSelection=true; renderInspector();
+      }));
+    }
+
+    // ── results re-render (used on mode toggle so each mode keeps its work) ──
+    function renderResults(){
+      if(state.mode==="debate"){
+        if(M().debate) renderDebate();
+        else $("results").innerHTML='<div class="empty">Run a debate to populate the desk.</div>';
+      } else {
+        const cards=M().cards||[];
+        $("results").innerHTML = cards.length ? cards.map(renderCard).join("") : '<div class="empty">Run a ticker to populate signal cards.</div>';
+        bindAgentRows();
+      }
+    }
+
+    // ── mode switching: re-render the target mode WITHOUT wiping either bucket ──
+    function setMode(mode){
+      state.mode=mode;
+      $("modeSignals").classList.toggle("on",mode==="signals");
+      $("modeDebate").classList.toggle("on",mode==="debate");
+      $("runForm").classList.toggle("hide",mode!=="signals");
+      $("debateForm").classList.toggle("hide",mode!=="debate");
+      $("resultsTitle").textContent = mode==="signals"?"Signal Cards":"Research Desk";
+      renderActivity(); renderInspector(); renderResults(); renderChat();
+      $("askButton").disabled=!M().runId;
+    }
+    // Clear a single mode's bucket (only when a fresh run starts in that mode).
+    function resetMode(mode){
+      const prev=state.modes[mode];
+      if(prev && prev._recoverIv){ clearInterval(prev._recoverIv); }  // stop any stale recovery poll
+      state.modes[mode]=freshMode();
+      if(mode===state.mode){ renderActivity(); renderInspector(); renderResults(); renderChat(); $("askButton").disabled=true; }
+    }
+    function closeSources(){ [state.runSource,state.debateSource,state.askSource].forEach(s=>s&&s.close()); state.runSource=state.debateSource=state.askSource=null; }
+
+    // ── deterministic run ──
+    async function getConfig(){
+      const p=new URLSearchParams({provider:$("provider").value,model:$("model").value});
+      const r=await fetch(`/api/config?${p}`); if(!r.ok) throw new Error(`config check failed (${r.status})`); return r.json();
+    }
+    async function runAnalysis(e){
+      e.preventDefault(); state.runSource&&state.runSource.close(); resetMode("signals"); setState("running");
+      $("runButton").disabled=true; $("stopButton").disabled=false;
+      let cfg; try{ cfg=await getConfig(); }catch(err){ pushVerdict("signals",err.message,"error"); setState("error"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
+      if(!cfg.has_credentials){ pushVerdict("signals",`${cfg.credential_key||"provider credentials"} not configured.`,"error"); setState("missing key"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
+      const p=new URLSearchParams({tickers:$("tickers").value,provider:$("provider").value,model:$("model").value,portfolio_mode:$("mode").value,agents:$("agents").value});
+      const src=new EventSource(`/api/run?${p}`); state.runSource=src;
+      src.addEventListener("run",ev=>{ const d=JSON.parse(ev.data); state.modes.signals.runId=d.run_id; });
+      src.addEventListener("activity",ev=>addActivity("signals",JSON.parse(ev.data)));
+      src.addEventListener("done",ev=>{ renderDone(JSON.parse(ev.data)); src.close(); });
+      src.addEventListener("failure",ev=>{ pushVerdict("signals",JSON.parse(ev.data).message||"Run failed.","error"); setState("error"); $("runButton").disabled=false; $("stopButton").disabled=true; src.close(); });
+    }
+    function renderDone(p){
+      const b=state.modes.signals;
+      b.runId=p.run_id; b.cards=p.cards||[]; b.llmLogs=p.llm_logs||{}; b.saved=p.saved_to?`saved: ${p.saved_to}`:"";
+      if(p.verdict||p.summary) b.chat.push({role:"nova",who:"Nova — verdict",text:p.verdict||p.summary});
+      finalizeActivity("signals");
+      setState("ready"); $("runButton").disabled=false; $("stopButton").disabled=true;
+      if(state.mode==="signals"){ renderResults(); renderInspector(); renderChat(); $("askButton").disabled=!b.runId; }
+    }
+
+    // ── debate run ──
+    function debateActivity(label,status){ addActivity("debate",{agent:label,ticker:"",status,analysis:status}); }
+    function toolBits(d){ return d.query || (d.results&&d.results.length?d.results.slice(0,4).join(", "):""); }
+    // Fill the desk from a saved/complete result (used by both the live 'done' event
+    // and recovery-by-run_id if the stream dropped). Idempotent.
+    function fillDebateFromResult(D, result){
+      if(!result) return;
+      if(result.plan) D.debate.plan=result.plan;
+      if(result.bear_case) D.debate.bear=result.bear_case;
+      if(result.memo) D.debate.memo=result.memo;
+      if(result.citation_urls) D.debate.citation_urls=result.citation_urls;
+      // Map each draft to a specialist slot by name match; any draft whose LLM-authored
+      // name doesn't contain a key falls into the next free slot so none are dropped.
+      const drafts=[...(result.specialist_drafts||[])];
+      const keys=Object.keys(SPEC_LABELS);
+      const filled=new Set();
+      const leftover=[];
+      for(const dr of drafts){
+        const a=String(dr.agent||"").toLowerCase();
+        const k=keys.find(key=>!filled.has(key)&&a.includes(key));
+        if(k){ D.debate.specialists[k]={status:"done",draft:dr}; filled.add(k); }
+        else leftover.push(dr);
+      }
+      for(const dr of leftover){
+        const k=keys.find(key=>!filled.has(key));
+        if(k){ D.debate.specialists[k]={status:"done",draft:dr}; filled.add(k); }
+      }
+    }
+    function applyDebateDone(D, d){
+      fillDebateFromResult(D, d.result);
+      D.runId=d.run_id||D.debate.run_id||null; if(d.llm_logs) D.llmLogs=d.llm_logs;
+      if(d.usage) D.saved=`usage: ${d.usage}`;
+      const m=D.debate.memo;
+      if(m && !D._memoPushed){ D.chat.push({role:"nova",who:"Nova — research memo",text:`${m.ticker}: ${String(m.conviction).toUpperCase()} conviction, ${m.directional_lean}.\n\n${m.base_case}`}); D._memoPushed=true; }
+      finalizeActivity("debate");
+      setState("ready"); $("debateButton").disabled=false; $("debateStop").disabled=true;
+      if(state.mode==="debate"){ renderDebate(); renderChat(); $("askButton").disabled=!D.runId; }
+    }
+    // The stream dropped before 'done' — the run keeps going server-side and saves to
+    // disk, so poll for the saved result and render it when ready.
+    function recoverDebate(D, runId){
+      if(D._recoverIv) clearInterval(D._recoverIv);  // never run two recovery polls at once
+      setState("recovering…"); debateActivity("recovery", "stream dropped — recovering the saved result…");
+      let tries=0;
+      D._recoverIv=setInterval(async()=>{
+        if(++tries>180){ clearInterval(D._recoverIv); D._recoverIv=null; return; }  // ~15 min cap
+        try{
+          const j=await (await fetch(`/api/debate/result?run_id=${encodeURIComponent(runId)}`)).json();
+          if(j.status==="done"){ clearInterval(D._recoverIv); D._recoverIv=null; applyDebateDone(D,{result:j.result,run_id:runId,usage:j.result&&j.result.usage}); }
+          else if(j.status==="not_found"){ clearInterval(D._recoverIv); D._recoverIv=null; pushVerdict("debate","Debate stopped before producing a memo.","error"); setState("error"); $("debateButton").disabled=false; $("debateStop").disabled=true; }
+        }catch(_){}
+      },5000);
+    }
+    async function runDebate(e){
+      e.preventDefault(); state.debateSource&&state.debateSource.close(); resetMode("debate"); setState("debating");
+      $("debateButton").disabled=true; $("debateStop").disabled=false;
+      const D=state.modes.debate;
+      const speed=$("dFast").value;
+      D.debate={ticker:$("dTicker").value.toUpperCase(),source:$("dSource").value,horizon:$("dHorizon").value,speed,run_id:null,plan:null,specialists:{},bear:null,memo:null,citation_urls:{}};
+      D._memoPushed=false;
+      for(const k of Object.keys(SPEC_LABELS)) D.debate.specialists[k]={status:"queued",draft:null};
+      if(state.mode==="debate") renderDebate();
+      const p=new URLSearchParams({ticker:$("dTicker").value,question:$("dQuestion").value,horizon:$("dHorizon").value,source:$("dSource").value,speed});
+      const src=new EventSource(`/api/debate?${p}`); state.debateSource=src;
+      let gotDone=false;
+      const paint=()=>{ if(state.mode==="debate") renderDebate(); };
+      src.addEventListener("start",ev=>{ const d=JSON.parse(ev.data); D.debate.run_id=d.run_id||null; debateActivity("supervisor","start"); });
+      src.addEventListener("phase",ev=>{
+        const d=JSON.parse(ev.data);
+        debateActivity(d.phase, `${d.status}${d.detail?` — ${d.detail}`:""}`);
+        if(d.phase==="plan"&&d.status==="done"&&d.plan){ D.debate.plan=d.plan; if(d.source) D.debate.source=d.source; paint(); }
+        if((d.phase==="debate")&&(d.status==="done"||d.status==="warn")&&d.bear){ D.debate.bear=d.bear; paint(); }
+        if(d.phase==="synthesize"&&d.status==="done"&&d.memo){ D.debate.memo=d.memo; paint(); }
+      });
+      src.addEventListener("tool_call",ev=>{ const d=JSON.parse(ev.data); debateActivity(d.agent||d.tool, `${d.tool}: ${toolBits(d)}`); });
+      src.addEventListener("specialist",ev=>{
+        const d=JSON.parse(ev.data); const s=D.debate.specialists[d.key]||{};
+        s.status=d.status==="done"?"done":"researching"; if(d.draft) s.draft=d.draft;
+        D.debate.specialists[d.key]=s;
+        debateActivity(d.key, d.status==="done"?(d.draft?`done · ${d.draft.stance}`:"done"):"researching…");
+        paint();
+      });
+      src.addEventListener("done",ev=>{ gotDone=true; applyDebateDone(D, JSON.parse(ev.data)); src.close(); });
+      src.addEventListener("failure",ev=>{ gotDone=true; pushVerdict("debate",JSON.parse(ev.data).message||"Debate failed.","error"); setState("error"); $("debateButton").disabled=false; $("debateStop").disabled=true; src.close(); });
+      // Stream dropped (proxy/idle/network) before finishing → don't let EventSource silently
+      // reconnect into a NEW run; close it and recover the saved result by run_id. If the
+      // failure happened before 'start' (no run_id — e.g. 500 / missing key), surface the
+      // error and re-enable the controls instead of leaving the desk locked.
+      src.onerror=()=>{
+        if(gotDone) return;
+        src.close();
+        if(D.debate.run_id){ recoverDebate(D, D.debate.run_id); }
+        else { pushVerdict("debate","Couldn't start the debate (connection failed before it began). Check the server / API key and try again.","error"); setState("error"); $("debateButton").disabled=false; $("debateStop").disabled=true; }
+      };
+    }
+
+    // ── ask (chat) — works after a Signals run OR a Debate (both have a run_id) ──
+    async function askQuestion(e){
+      e.preventDefault();
+      const q=$("question").value.trim(); const mode=state.mode; const runId=M().runId;
+      if(!q||!runId) return;
+      if(state.askSource) state.askSource.close();
+      $("question").value="";
+      pushChat(mode,{role:"user",text:q});
+      const bubble=pushChat(mode,{role:"nova",who:"Nova",text:"…"});
+      let answer="";
+      const p=new URLSearchParams({run_id:runId,question:q,provider:$("provider").value,model:$("model").value});
+      const src=new EventSource(`/api/ask?${p}`); state.askSource=src;
+      src.addEventListener("token",ev=>{ answer+=JSON.parse(ev.data).text||""; bubble.text=answer; if(mode===state.mode) renderChat(); });
+      src.addEventListener("done",()=>src.close());
+      src.addEventListener("failure",ev=>{ bubble.html=`<p class="failed">${esc(JSON.parse(ev.data).message||"Question failed.")}</p>`; if(mode===state.mode) renderChat(); src.close(); });
+    }
+
+    $("modeSignals").addEventListener("click",()=>setMode("signals"));
+    $("modeDebate").addEventListener("click",()=>setMode("debate"));
+    $("runForm").addEventListener("submit",runAnalysis);
+    $("debateForm").addEventListener("submit",runDebate);
+    $("askForm").addEventListener("submit",askQuestion);
+    $("stopButton").addEventListener("click",()=>{ closeSources(); setState("closed"); $("runButton").disabled=false; $("stopButton").disabled=true; });
+    $("debateStop").addEventListener("click",()=>{
+      const rid=state.modes.debate.debate&&state.modes.debate.debate.run_id;
+      if(rid) fetch(`/api/debate/cancel?run_id=${encodeURIComponent(rid)}`).catch(()=>{});  // explicit stop → halt tokens
+      closeSources(); setState("closed"); $("debateButton").disabled=false; $("debateStop").disabled=true;
+    });
+    $("question").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); $("askForm").requestSubmit(); } });
+  </script>
+</body>
+</html>

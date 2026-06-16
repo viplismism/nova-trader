@@ -5,11 +5,35 @@ import os
 from typing import Any
 
 import requests
+from dotenv import load_dotenv
 from pydantic import BaseModel
 from src.utils.progress import progress
 # Lightweight state shim — call_llm accepts a dict-like state with a "metadata" key.
 # Kept loose because both the new v2 engine and the backtest adapter pass plain dicts.
 StateLike = dict[str, Any]
+
+_ENV_LOADED = False
+
+_PROVIDER_KEYS = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "minimax": "MINIMAX_API_KEY",
+    "xai": "XAI_API_KEY",
+}
+
+# Default Anthropic model used when a caller selects the Anthropic provider
+# without naming a model. Opus 4.8 is the most capable Claude model.
+_ANTHROPIC_DEFAULT_MODEL = "claude-opus-4-8"
+
+
+def _ensure_env_loaded() -> None:
+    global _ENV_LOADED
+    if not _ENV_LOADED:
+        load_dotenv(override=False)
+        _ENV_LOADED = True
 
 
 def _provider_name(model_provider: str | object) -> str:
@@ -61,6 +85,29 @@ def _prompt_to_openai_messages(prompt: object) -> list[dict[str, str]]:
     return messages
 
 
+def _split_anthropic_messages(messages: list[dict]) -> tuple[str, list[dict[str, str]]]:
+    """Split OpenAI-style chat messages into Anthropic's (system, messages) shape.
+
+    Anthropic takes system prompts as a top-level ``system`` argument rather than
+    a message with ``role: "system"``, and only accepts ``user`` / ``assistant``
+    turns. System messages are concatenated; everything else maps to a user turn
+    unless it is explicitly an assistant turn.
+    """
+    system_parts: list[str] = []
+    convo: list[dict[str, str]] = []
+    for message in messages:
+        role = str(message.get("role", "user"))
+        content = str(message.get("content", ""))
+        if role == "system":
+            if content:
+                system_parts.append(content)
+            continue
+        convo.append({"role": "assistant" if role == "assistant" else "user", "content": content})
+    if not convo:
+        convo = [{"role": "user", "content": "\n\n".join(system_parts) or "Continue."}]
+    return "\n\n".join(system_parts), convo
+
+
 def _extract_json_object(content: str) -> dict | None:
     """Parse a JSON object, including common fenced-code responses."""
     if not content:
@@ -100,10 +147,71 @@ def _format_exception(exc: Exception) -> str:
 
 
 def _api_key(api_keys: dict | None, name: str) -> str:
+    _ensure_env_loaded()
     value = (api_keys or {}).get(name) or os.getenv(name)
     if not value:
         raise ValueError(f"{name} not found. Set {name} in .env.")
     return value
+
+
+def required_api_key_name(provider: str | object) -> str | None:
+    """Return the environment key required for a provider, without reading it."""
+
+    prov = _provider_name(provider)
+    if prov == "azure openai":
+        return "AZURE_OPENAI_API_KEY"
+    return _PROVIDER_KEYS.get(prov)
+
+
+def provider_has_credentials(provider: str | object, api_keys: dict | None = None) -> bool:
+    """Credential preflight used by the browser UI. Never exposes secret values."""
+
+    _ensure_env_loaded()
+    prov = _provider_name(provider)
+    if prov == "ollama":
+        return True
+    if prov == "azure openai":
+        return bool(
+            (api_keys or {}).get("AZURE_OPENAI_API_KEY") or os.getenv("AZURE_OPENAI_API_KEY")
+        ) and bool(os.getenv("AZURE_OPENAI_ENDPOINT")) and bool(
+            os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME") or os.getenv("MODEL_NAME")
+        )
+    key_name = required_api_key_name(prov)
+    return bool(key_name and ((api_keys or {}).get(key_name) or os.getenv(key_name)))
+
+
+def _fallback_model_config(model_provider: str | object, model_name: str) -> tuple[str, str] | None:
+    """Fallback target for quota/auth failures.
+
+    Defaults to MiniMax because this workspace is configured for it and it is
+    OpenAI-compatible. Env overrides keep the behavior deployment-friendly.
+    """
+
+    _ensure_env_loaded()
+    fallback_provider = os.getenv("NOVA_LLM_FALLBACK_PROVIDER", "MiniMax")
+    fallback_model = os.getenv("NOVA_LLM_FALLBACK_MODEL", "MiniMax-M2.7")
+    if _provider_name(fallback_provider) == _provider_name(model_provider):
+        return None
+    if not provider_has_credentials(fallback_provider):
+        return None
+    return fallback_model, fallback_provider
+
+
+def _should_try_fallback(exc: Exception) -> bool:
+    text = _format_exception(exc).lower()
+    return any(
+        marker in text
+        for marker in (
+            "insufficient_quota",
+            "exceeded your current quota",
+            "quota",
+            "billing",
+            "429",
+            "rate limit",
+            "authentication",
+            "api key",
+        )
+    )
 
 
 def _openai_compatible_config(provider: str, api_keys: dict | None) -> tuple[str, str | None, dict[str, str]]:
@@ -170,6 +278,56 @@ def _call_openai_compatible_json(
     if parsed is None:
         raise ValueError(f"Model returned non-JSON content: {content!r}")
     return pydantic_model.model_validate(parsed), telemetry
+
+
+def _call_anthropic_json(
+    *,
+    prompt: object,
+    pydantic_model: type[BaseModel],
+    model_name: str,
+    api_keys: dict | None,
+) -> tuple[BaseModel, dict]:
+    """Call the Anthropic Messages API with structured output. Returns (parsed, telemetry).
+
+    Uses ``messages.parse`` so the response is validated against ``pydantic_model``
+    server-side; the SDK strips JSON-schema constraints the structured-output API
+    does not support and re-validates them client-side. No sampling params or
+    ``thinking`` config are sent — those 400 on Opus 4.8 and aren't needed for
+    short structured extractions.
+    """
+    import anthropic
+
+    api_key = _api_key(api_keys, "ANTHROPIC_API_KEY")
+    system, messages = _split_anthropic_messages(_prompt_to_openai_messages(prompt))
+
+    client = anthropic.Anthropic(api_key=api_key)
+    kwargs: dict[str, Any] = {
+        "model": model_name or _ANTHROPIC_DEFAULT_MODEL,
+        "max_tokens": 8192,
+        "messages": messages,
+        "output_format": pydantic_model,
+    }
+    if system:
+        kwargs["system"] = system
+
+    response = client.messages.parse(**kwargs)
+    if getattr(response, "stop_reason", None) == "refusal":
+        raise ValueError("Anthropic declined the request (stop_reason=refusal).")
+
+    parsed = getattr(response, "parsed_output", None)
+    if parsed is None:
+        raise ValueError("Anthropic returned no parseable structured output.")
+
+    text = next((b.text for b in response.content if getattr(b, "type", None) == "text"), "")
+    usage = getattr(response, "usage", None)
+    telemetry = {
+        "system_fingerprint": None,
+        "prompt_tokens": getattr(usage, "input_tokens", None) if usage else None,
+        "completion_tokens": getattr(usage, "output_tokens", None) if usage else None,
+        "response_content": text,
+        "reasoning_content": None,
+    }
+    return parsed, telemetry
 
 
 def _call_azure_openai_json(
@@ -272,6 +430,13 @@ def _call_json_model(
 ) -> tuple[BaseModel, dict]:
     """Returns (parsed_model, telemetry_dict)."""
     provider = _provider_name(model_provider)
+    if provider == "anthropic":
+        return _call_anthropic_json(
+            prompt=prompt,
+            pydantic_model=pydantic_model,
+            model_name=model_name,
+            api_keys=api_keys,
+        )
     if provider in {"openai", "openrouter", "deepseek", "groq", "minimax", "xai"}:
         return _call_openai_compatible_json(
             prompt=prompt,
@@ -298,7 +463,7 @@ def _call_json_model(
         )
     raise ValueError(
         f"Provider {model_provider!r} has no direct adapter yet. "
-        "Use OpenAI, Azure OpenAI, OpenRouter, DeepSeek, Groq, MiniMax, xAI, or Ollama."
+        "Use Anthropic, MiniMax, OpenAI, Azure OpenAI, OpenRouter, DeepSeek, Groq, xAI, or Ollama."
     )
 
 
@@ -336,8 +501,9 @@ def call_llm(
     if state and agent_name:
         model_name, model_provider = get_agent_model_config(state, agent_name)
     else:
-        model_name = "gpt-4.1"
-        model_provider = "OPENAI"
+        model_name = "MiniMax-M2.7"
+        model_provider = "MiniMax"
+    fallback_used = False
 
     api_keys = None
     if state:
@@ -412,6 +578,13 @@ def call_llm(
                 telemetry.get("prompt_tokens") or 0,
                 telemetry.get("completion_tokens") or 0,
             )
+            fallback = _fallback_model_config(model_provider, model_name)
+            if not fallback_used and fallback and _should_try_fallback(e):
+                model_name, model_provider = fallback
+                fallback_used = True
+                if agent_name:
+                    progress.update_status(agent_name, ticker, f"Switching to {model_provider}")
+                continue
             if agent_name:
                 progress.update_status(agent_name, ticker, f"Error - retry {attempt + 1}/{max_retries}")
             if attempt == max_retries - 1:
@@ -531,6 +704,37 @@ def stream_chat(
     chat surface stream thinking into a small box and keep the final answer clean.
     Supports the OpenAI-compatible providers, Azure OpenAI, and Ollama.
     """
+    try:
+        yield from _stream_chat_once(
+            messages,
+            provider=provider,
+            model=model,
+            api_keys=api_keys,
+            temperature=temperature,
+        )
+        return
+    except Exception as exc:
+        fallback = _fallback_model_config(provider, model)
+        if not fallback or not _should_try_fallback(exc):
+            raise
+        fallback_model, fallback_provider = fallback
+        yield from _stream_chat_once(
+            messages,
+            provider=fallback_provider,
+            model=fallback_model,
+            api_keys=api_keys,
+            temperature=temperature,
+        )
+
+
+def _stream_chat_once(
+    messages: list[dict[str, str]],
+    *,
+    provider: str | object,
+    model: str,
+    api_keys: dict | None = None,
+    temperature: float = 0.3,
+):
     prov = _provider_name(provider)
 
     def _emit_openai_stream(stream):
@@ -547,6 +751,35 @@ def stream_chat(
             if content:
                 yield from splitter.feed(content)
         yield from splitter.flush()
+
+    if prov == "anthropic":
+        import anthropic
+
+        api_key = _api_key(api_keys, "ANTHROPIC_API_KEY")
+        system, convo = _split_anthropic_messages(messages)
+        client = anthropic.Anthropic(api_key=api_key)
+        stream_kwargs: dict[str, Any] = {
+            "model": model or _ANTHROPIC_DEFAULT_MODEL,
+            "max_tokens": 16000,
+            "messages": convo,
+            # Adaptive thinking with summarized display so the chat surface can
+            # stream Claude's reasoning into its own channel. No temperature —
+            # sampling params 400 on Opus 4.8.
+            "thinking": {"type": "adaptive", "display": "summarized"},
+        }
+        if system:
+            stream_kwargs["system"] = system
+        with client.messages.stream(**stream_kwargs) as stream:
+            for event in stream:
+                if event.type != "content_block_delta":
+                    continue
+                delta = event.delta
+                delta_type = getattr(delta, "type", None)
+                if delta_type == "thinking_delta" and getattr(delta, "thinking", None):
+                    yield ("reasoning", delta.thinking)
+                elif delta_type == "text_delta" and getattr(delta, "text", None):
+                    yield ("answer", delta.text)
+        return
 
     if prov in {"openai", "openrouter", "deepseek", "groq", "minimax", "xai"}:
         from openai import OpenAI
@@ -640,8 +873,8 @@ def get_agent_model_config(state, agent_name):
             return model_name, model_provider.value if hasattr(model_provider, 'value') else str(model_provider)
     
     # Fall back to global configuration (system defaults)
-    model_name = state.get("metadata", {}).get("model_name") or "gpt-4.1"
-    model_provider = state.get("metadata", {}).get("model_provider") or "OPENAI"
+    model_name = state.get("metadata", {}).get("model_name") or "MiniMax-M2.7"
+    model_provider = state.get("metadata", {}).get("model_provider") or "MiniMax"
     
     # Convert enum to string if necessary
     if hasattr(model_provider, 'value'):
