@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 
 from src.agents.math.valuation import (
+    calculate_cost_of_equity,
     calculate_dcf_scenarios,
     calculate_ev_ebitda_value,
     calculate_owner_earnings_value,
@@ -20,7 +21,7 @@ from src.agents.math.valuation import (
     calculate_wacc,
 )
 from src.schemas.context import RunContext
-from src.schemas.signals import Signal
+from src.schemas.signals import Signal, ValuationTarget
 from src.schemas.views import FinancialsView
 from src.utils.progress import progress
 
@@ -42,7 +43,11 @@ def run_valuation_agent(ctx: RunContext, view: FinancialsView, recorder=None) ->
             agent_id=AGENT_ID, ticker=view.ticker,
             reason="Need at least 2 periods of metrics and line items",
         )
-    if not view.market_cap:
+    # Market cap drives every valuation gap. The dedicated live lookup is flaky
+    # (no Financial Datasets key + rate-limited yfinance), so fall back to the
+    # market_cap carried on the metrics we already fetched before giving up.
+    market_cap = view.market_cap or getattr(view.metrics[0], "market_cap", None)
+    if not market_cap:
         return Signal.abstained(
             agent_id=AGENT_ID, ticker=view.ticker, reason="Market cap unavailable",
         )
@@ -110,7 +115,6 @@ def run_valuation_agent(ctx: RunContext, view: FinancialsView, recorder=None) ->
         "residual_income": rim_val,
     }
 
-    market_cap = view.market_cap
     contributing = {m: v for m, v in method_values.items() if v and v > 0}
     if not contributing:
         return Signal.abstained(
@@ -135,6 +139,26 @@ def run_valuation_agent(ctx: RunContext, view: FinancialsView, recorder=None) ->
         f"{m}=${v:,.0f} (gap {(v - market_cap) / market_cap:+.1%})"
         for m, v in contributing.items()
     ]
+
+    # 12-month price target: blended intrinsic value is market_cap * (1 + gap);
+    # per share that is current_price * (1 + gap), then drifted forward one year
+    # at the cost of equity. Needs shares outstanding to convert to a price.
+    valuation_target = None
+    shares = getattr(li_curr, "outstanding_shares", None)
+    if shares and shares > 0:
+        current_price = market_cap / shares
+        fair_value = current_price * (1 + weighted_gap)
+        cost_of_equity = calculate_cost_of_equity()
+        target_price = fair_value * (1 + cost_of_equity)
+        valuation_target = ValuationTarget(
+            current_price=current_price,
+            fair_value=fair_value,
+            target_price=target_price,
+            upside=target_price / current_price - 1,
+            cost_of_equity=cost_of_equity,
+        )
+        key_factors.append(f"12mo target=${target_price:,.2f} ({valuation_target.upside:+.1%})")
+
     progress.update_status(AGENT_ID, view.ticker, "Done")
 
     return Signal(
@@ -147,4 +171,5 @@ def run_valuation_agent(ctx: RunContext, view: FinancialsView, recorder=None) ->
             f"${market_cap:,.0f} across {len(contributing)} methods"
         ),
         key_factors=key_factors,
+        valuation_target=valuation_target,
     )

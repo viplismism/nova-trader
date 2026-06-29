@@ -167,9 +167,9 @@ def _synthesis_prompt(
 def _fallback_memo(web_results: list[WebSearchResult], filing_excerpts: list[FilingExcerpt]) -> _ResearchMemo:
     findings: list[str] = []
     for item in web_results[:2]:
-        findings.append(f"{item.title}: {_clip(item.snippet, 180)} ({item.url})")
+        findings.append(f"{item.title}: {_clip(item.snippet, 400)} ({item.url})")
     for item in filing_excerpts[:2]:
-        findings.append(f"[{item.chunk_id}] {_clip(item.text, 180)}")
+        findings.append(f"[{item.chunk_id}] {_clip(item.text, 400)}")
     return _ResearchMemo(
         signal="neutral",
         confidence=50 if findings else 0,
@@ -285,12 +285,7 @@ def run_adaptive_research_agent(ctx: RunContext, view: AdaptiveResearchView, rec
         reasoning=memo.reasoning,
         web_sources=web_sources,
         filing_sources=filing_sources,
-        key_factors=[
-            f"focus={plan.focus or 'adaptive research'}",
-            f"web_queries={len(plan.web_queries or [])}",
-            f"filing_queries={len(plan.filing_queries or [])}",
-            f"web_sources={len(web_results)}",
-            f"filing_sources={len(filing_excerpts)}",
-            *(memo.key_findings or [])[:6],
-        ],
+        # Only the human-readable findings belong here — the planning metadata
+        # (focus, query/source counts) was rendering as a key=value dump in the UI.
+        key_factors=list((memo.key_findings or [])[:6]),
     )

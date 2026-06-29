@@ -62,7 +62,7 @@ from src.agents._text import clip as _clip, term_count as _term_count
 
 
 def _snippet(text: str) -> str:
-    return _clip(text, 190)
+    return _clip(text, 1300)  # ~full filing chunk (~1200 chars) so passages aren't cut
 
 
 def run_sec_filings_agent(ctx: RunContext, view: FilingsView, recorder=None) -> Signal:  # noqa: ARG001
@@ -92,11 +92,10 @@ def run_sec_filings_agent(ctx: RunContext, view: FilingsView, recorder=None) -> 
                     snippet=_snippet(excerpt.text),
                 )
             )
-            if len(cited) < 5:
-                cited.append(
-                    f"[{excerpt.chunk_id}] {excerpt.form} {excerpt.fiscal_year} {excerpt.item}: "
-                    f"{_snippet(excerpt.text)}"
-                )
+            cited.append(
+                f"[{excerpt.chunk_id}] {excerpt.form} {excerpt.fiscal_year} {excerpt.item}: "
+                f"{_snippet(excerpt.text)}"
+            )
         total = max(pos + neg, 1)
         score = (pos - neg) / total
         if score >= 0.15:
@@ -118,7 +117,7 @@ def run_sec_filings_agent(ctx: RunContext, view: FilingsView, recorder=None) -> 
             confidence=confidence,
             reasoning=reasoning,
             key_factors=cited,
-            filing_sources=filing_sources[:8],
+            filing_sources=filing_sources,
         )
     except Exception as exc:
         logger.exception("sec filings agent failed for %s", view.ticker)

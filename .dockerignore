@@ -1,5 +1,10 @@
 .git
 .venv
+.env
+.env.*
+runs
+.claude
+docs
 .pytest_cache
 __pycache__
 *.pyc

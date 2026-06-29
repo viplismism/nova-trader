@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import contextlib
 import io
 import json
 import os
 import queue
 import re
+import secrets
 import threading
 from importlib.resources import files
 from typing import Any
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, StreamingResponse
 
 from src.chat.context import build_context
 from src.chat.models import DEFAULT_AGENTS, ChatSettings
@@ -56,6 +58,28 @@ _QA_SYSTEM = (
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Nova Trader", version="0.1.0")
+
+    # Optional shared-password gate (HTTP Basic). Enabled only when NOVA_ACCESS_PASSWORD
+    # is set, so local dev stays open. Guards every route except the health probe, so a
+    # public demo URL can't run anything (and spend API credits) without the password.
+    access_password = os.environ.get("NOVA_ACCESS_PASSWORD", "")
+    if access_password:
+        @app.middleware("http")
+        async def _require_password(request: Request, call_next):
+            if request.url.path == "/api/health":
+                return await call_next(request)
+            header = request.headers.get("authorization", "")
+            ok = False
+            if header.startswith("Basic "):
+                with contextlib.suppress(Exception):
+                    _, _, supplied = base64.b64decode(header[6:]).decode().partition(":")
+                    ok = secrets.compare_digest(supplied, access_password)
+            if not ok:
+                return PlainTextResponse(
+                    "Authentication required", status_code=401,
+                    headers={"WWW-Authenticate": 'Basic realm="Nova Trader"'},
+                )
+            return await call_next(request)
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> str:
@@ -292,8 +316,6 @@ def create_app() -> FastAPI:
                     _ACTIVE_DEBATES.pop(recorder.run_id, None)
 
         thread = threading.Thread(target=worker, name=f"nova-web-debate-{symbol}", daemon=True)
-
-        thread = threading.Thread(target=worker, name=f"nova-web-debate-{symbol}", daemon=True)
         thread.start()
         return StreamingResponse(
             _stream_events(events, done),
@@ -317,6 +339,27 @@ def create_app() -> FastAPI:
     async def debate_recent() -> dict[str, Any]:
         """Saved debates (newest first) so the UI can re-open a past run by id."""
         return {"runs": DebateRecorder.list_recent(20)}
+
+    @app.get("/api/recent")
+    async def signals_recent() -> dict[str, Any]:
+        """Saved Signals runs (newest first) so the UI can re-open a past run by id."""
+        return {"runs": RunRecorder.list_recent(20)}
+
+    @app.get("/api/run/result")
+    async def run_result(run_id: str = Query(..., min_length=1)) -> dict[str, Any]:
+        """Re-open a saved Signals run: returns the same card payload the live stream
+        delivers on 'done', so the browser can render a past session."""
+        run_id = _validate_run_id(run_id)
+        if not RunRecorder.exists(run_id):
+            return {"status": "not_found", "run_id": run_id}
+        recommendation = _load_recommendation(run_id)
+        return {
+            "status": "done",
+            "run_id": run_id,
+            "cards": [card.model_dump(mode="json") for card in build_signal_cards(recommendation)],
+            "summary": recommendation.summary,
+            "llm_logs": _public_llm_logs(run_id),
+        }
 
     @app.get("/api/debate/result")
     async def debate_result(run_id: str = Query(..., min_length=1)) -> dict[str, Any]:

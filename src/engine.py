@@ -175,8 +175,8 @@ def _build_summary(consensus: dict, decisions) -> str:
         c = consensus.get(ticker)
         if c:
             parts.append(
-                f"{ticker}: consensus={c.direction} ({c.confidence:.0%}), "
-                f"action={dec.action}"
+                f"{ticker}: consensus={c.direction} ({c.confidence:.0%}) "
+                f"{c.stars}★ {c.stars_label}, action={dec.action}"
                 + (f" x{dec.quantity}" if dec.quantity else "")
             )
         else:

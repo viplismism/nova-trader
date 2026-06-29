@@ -87,8 +87,12 @@ def test_adaptive_research_runs_planned_web_and_filing_queries(monkeypatch):
     assert signal.confidence == 0.72
     assert len(calls["web"]) == 2
     assert calls["filings"][0][1] == ["services demand margin", "regulatory risk competition"]
-    assert "web_sources=1" in signal.key_factors
-    assert "filing_sources=1" in signal.key_factors
+    # key_factors are the human-readable findings only — no key=value metadata dump.
+    assert signal.key_factors == [
+        "Demand source supports growth (https://example.com/aapl)",
+        "Filing cites risk but not enough to flip the call (AAPL-10K-0001)",
+    ]
+    assert not any("=" in f and " " not in f.split("=")[0] for f in signal.key_factors)
 
 
 def test_adaptive_research_abstains_without_evidence(monkeypatch):

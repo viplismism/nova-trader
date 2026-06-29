@@ -67,11 +67,13 @@
     button:disabled { opacity: 0.45; cursor: not-allowed; }
     .hide { display: none !important; }
 
+    #recentWrap > h2, #recentRunsWrap > h2 { margin: 0; padding: 10px 14px 4px; color: var(--teal); font-size: 13px; text-transform: uppercase; }
     .recent { max-height: 22vh; overflow: auto; padding: 6px 8px; display: grid; gap: 4px; }
     .recent-item { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; color: var(--ink); font-size: 12px; }
     .recent-item:hover { border-color: var(--teal); background: #141917; }
     .recent-q { display: block; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .activity { overflow: auto; padding: 8px; min-height: 0; }
+    .activity { overflow: auto; padding: 8px; min-height: 0; flex: 1; }
+    #recentWrap, #recentRunsWrap { flex: none; }
     .activity-row {
       display: grid; grid-template-columns: 18px 1fr; gap: 8px; align-items: start;
       padding: 6px; border-radius: 6px; color: var(--muted); cursor: pointer;
@@ -105,6 +107,15 @@
     .action.buy, .action.cover, .stance.bullish { color: var(--green); }
     .action.sell, .action.short, .stance.bearish, .failed { color: var(--red); }
     .stance.neutral { color: var(--amber); }
+    .rating { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; margin-left: auto; }
+    .rating .stars { color: var(--amber); letter-spacing: 1px; font-size: 13px; }
+    .fact em.up { color: var(--green); font-style: normal; font-weight: 700; }
+    .fact em.down { color: var(--red); font-style: normal; font-weight: 700; }
+    .sig-head { font-weight: 800; text-transform: capitalize; margin: 2px 0 6px; }
+    .sig-reason { margin: 0 0 10px; line-height: 1.55; color: var(--ink, #d7dde5); }
+    .sig-factors { margin: 4px 0 8px; padding-left: 18px; }
+    .sig-factors li { margin: 3px 0; line-height: 1.4; }
+    .inline-link { color: var(--teal); text-decoration: underline; word-break: break-all; }
     .facts { display: grid; gap: 6px; }
     .fact { display: grid; grid-template-columns: minmax(120px,160px) 1fr; gap: 12px; align-items: baseline; }
     .fact span { color: var(--muted); text-transform: lowercase; } .fact strong { color: var(--ink); font-weight: 600; }
@@ -207,10 +218,10 @@
             </label>
             <label>Agents
               <select id="agents">
-                <option value="technical,fundamentals,news_sentiment,web_research,sec_filings">core council</option>
+                <option value="technical,fundamentals,growth,valuation,news_sentiment,web_research,sec_filings,adaptive_research,insider_sentiment,warren_buffett" selected>full council (all 10 agents)</option>
+                <option value="technical,fundamentals,news_sentiment,web_research,sec_filings">core council (faster, fewer)</option>
                 <option value="technical,fundamentals,news_sentiment,web_research,sec_filings,adaptive_research">adaptive research</option>
                 <option value="">default set</option>
-                <option value="technical,fundamentals,growth,valuation,news_sentiment,web_research,sec_filings,adaptive_research,insider_sentiment,warren_buffett">full council</option>
               </select>
             </label>
           </div>
@@ -259,6 +270,10 @@
         <div id="recentWrap" class="hide">
           <h2>Recent debates</h2>
           <div id="recentDebates" class="recent"></div>
+        </div>
+        <div id="recentRunsWrap" class="hide">
+          <h2>Recent runs</h2>
+          <div id="recentRuns" class="recent"></div>
         </div>
         <h2>Activity</h2>
         <div id="activity" class="activity"><div class="empty">No activity yet.</div></div>
@@ -393,10 +408,18 @@
       const evHtml=events.length?events.map(r=>`<div class="log-line"><span class="log-time">${esc(r.received_at||"")}</span><span class="log-text">${esc(r.analysis||r.status||"working")}</span></div>`).join(""):'<div class="empty">No timeline yet.</div>';
       let sigHtml="";
       if(sg){
+        // map filing chunk-ids -> EDGAR url so [AAPL-10K-0100] becomes clickable
+        const filingUrls={}; (sg.filing_sources||[]).forEach(s=>{ if(s.chunk_id&&s.url) filingUrls[s.chunk_id]=s.url; });
+        const CHUNK_RE=/\b[A-Z]{1,6}-\d{1,2}[A-Z]-\d{2,5}\b/g;
+        const chipIds=t=>t.replace(CHUNK_RE,id=>filingUrls[id]?`<a class="inline-link" href="${esc(filingUrls[id])}" target="_blank" rel="noopener" title="open ${id} on SEC EDGAR">${id}</a>`:id);
+        // escape text, then linkify http(s) URLs AND filing chunk-ids
+        const linkify=t=>{const re=/https?:\/\/[^\s)]+/g;let out="",last=0,m;while((m=re.exec(t))){out+=chipIds(esc(t.slice(last,m.index)));out+=`<a class="inline-link" href="${esc(m[0])}" target="_blank" rel="noopener">${esc(m[0])}</a>`;last=m.index+m[0].length;}return out+chipIds(esc(t.slice(last)));};
+        const fmtFactor=f=>linkify(String(f).replace(/^([a-z0-9_ ]{1,24})=/i,(m,k)=>k.replace(/_/g," ")+": "));
+        const factors=(sg.key_factors||[]);
         sigHtml=`<div class="inspect-block"><div class="inspect-label">Signal</div>
-          <div>${esc(sg.direction)} ${pct(sg.confidence)} · ${esc(sg.status)}</div>
-          <div>${esc(sg.error||sg.reasoning||"No reasoning recorded.")}</div>
-          ${(sg.key_factors||[]).slice(0,6).map(f=>`<div class="log-text">${esc(f)}</div>`).join("")}
+          <div class="sig-head"><strong class="stance ${esc(sg.direction)}">${esc(sg.direction)}</strong> ${pct(sg.confidence)} · ${esc(sg.status)}</div>
+          <p class="sig-reason">${esc(sg.error||sg.reasoning||"No reasoning recorded.")}</p>
+          ${factors.length?`<div class="inspect-label">Key factors</div><ul class="sig-factors">${factors.map(f=>`<li>${fmtFactor(f)}</li>`).join("")}</ul>`:""}
           ${citationChips(sg.web_sources, sg.filing_sources)}</div>`;
       }
       if(spec && spec.draft){
@@ -442,10 +465,17 @@
           <div class="agent-reason">${esc(reason)}</div>
           ${citationChips(a.web_sources, a.filing_sources)}</div>`;
       }).join("");
+      const stars = card.stars||3, starsTitle = esc(card.stars_label||"Hold");
+      const starStr = "★".repeat(stars)+"☆".repeat(5-stars);
+      const vt = card.valuation_target;
+      const targetFact = vt ? `<div class="fact"><span>12mo target</span><strong>$${vt.target_price.toFixed(2)} <em class="${vt.upside>=0?'up':'down'}">(${vt.upside>=0?'+':''}${(vt.upside*100).toFixed(1)}%)</em> · fair $${vt.fair_value.toFixed(2)} vs $${vt.current_price.toFixed(2)}</strong></div>` : "";
       return `<article class="signal-card">
-        <div class="card-head"><div class="ticker">${esc(card.ticker)}</div><div class="action ${esc(action)}">${esc(action)} ${pct(card.action_confidence)}</div></div>
+        <div class="card-head"><div class="ticker">${esc(card.ticker)}</div>
+          <div class="rating" title="STARS rating: ${starsTitle}"><span class="stars">${starStr}</span> ${starsTitle}</div>
+          <div class="action ${esc(action)}">${esc(action)} ${pct(card.action_confidence)}</div></div>
         <div class="facts">
           <div class="fact"><span>consensus</span><strong>${esc(card.consensus_direction)} ${pct(card.consensus_confidence)}</strong></div>
+          ${targetFact}
           <div class="fact"><span>votes</span><strong>${votes.bullish||0} bull / ${votes.bearish||0} bear / ${votes.neutral||0} neutral</strong></div>
           <div class="fact"><span>decision</span><strong>${esc(card.decision_reasoning||"-")}</strong></div>
         </div>
@@ -535,10 +565,11 @@
       $("runForm").classList.toggle("hide",mode!=="signals");
       $("debateForm").classList.toggle("hide",mode!=="debate");
       $("recentWrap").classList.toggle("hide",mode!=="debate");
+      $("recentRunsWrap").classList.toggle("hide",mode!=="signals");
       $("resultsTitle").textContent = mode==="signals"?"Signal Cards":"Research Desk";
       renderActivity(); renderInspector(); renderResults(); renderChat();
       $("askButton").disabled=!M().runId;
-      if(mode==="debate") loadRecent();
+      if(mode==="debate") loadRecent(); else loadRecentRuns();
     }
     // Clear a single mode's bucket (only when a fresh run starts in that mode).
     function resetMode(mode){
@@ -573,6 +604,7 @@
       finalizeActivity("signals");
       setState("ready"); $("runButton").disabled=false; $("stopButton").disabled=true;
       if(state.mode==="signals"){ renderResults(); renderInspector(); renderChat(); $("askButton").disabled=!b.runId; }
+      loadRecentRuns();
     }
 
     // ── debate run ──
@@ -701,6 +733,27 @@
       }catch(_){ setState("error"); pushVerdict("debate","Failed to load that run.","error"); }
     }
 
+    // ── recent Signals runs: re-open any saved run by id ──
+    async function loadRecentRuns(){
+      const el=$("recentRuns"); if(!el) return;
+      try{
+        const j=await (await fetch("/api/recent")).json();
+        const runs=j.runs||[];
+        el.innerHTML = runs.length
+          ? runs.map(r=>`<div class="recent-item" data-id="${esc(r.run_id)}">${esc((r.tickers||[]).join(", ")||"?")}${r.stars?` · ${esc(String(r.stars))}★ ${esc(r.stars_label||"")}`:""}<span class="recent-q">${esc(r.as_of||"")}</span></div>`).join("")
+          : '<div class="empty" style="padding:4px">No saved runs yet.</div>';
+        el.querySelectorAll(".recent-item[data-id]").forEach(it=>it.addEventListener("click",()=>openSignalsRun(it.dataset.id)));
+      }catch(_){ el.innerHTML='<div class="empty" style="padding:4px">Could not load recent runs.</div>'; }
+    }
+    async function openSignalsRun(runId){
+      setState("loading…");
+      try{
+        const j=await (await fetch(`/api/run/result?run_id=${encodeURIComponent(runId)}`)).json();
+        if(j.status==="done"){ if(state.mode!=="signals") setMode("signals"); renderDone(j); }
+        else { pushVerdict("signals","That run could not be loaded.","error"); setState("ready"); }
+      }catch(_){ setState("error"); pushVerdict("signals","Failed to load that run.","error"); }
+    }
+
     // ── ask (chat) — works after a Signals run OR a Debate (both have a run_id) ──
     async function askQuestion(e){
       e.preventDefault();
@@ -730,6 +783,7 @@
       closeSources(); setState("closed"); $("debateButton").disabled=false; $("debateStop").disabled=true;
     });
     $("question").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); $("askForm").requestSubmit(); } });
+    setMode(state.mode);  // initialize the default (signals) view + load its recent-runs list
   </script>
 </body>
 </html>

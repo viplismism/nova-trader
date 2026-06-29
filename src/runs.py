@@ -170,6 +170,37 @@ class RunRecorder:
     def exists(cls, run_id: str, base_dir: Path | None = None) -> bool:
         return ((base_dir or runs_root()) / run_id).is_dir()
 
+    @classmethod
+    def list_recent(cls, limit: int = 20, base_dir: Path | None = None) -> list[dict[str, Any]]:
+        """Saved Signals runs (newest first) as compact rows for a 'recent' picker.
+        Excludes debate-* dirs (those have their own recorder) and any without a
+        recommendation.json."""
+        root = base_dir or runs_root()
+        try:
+            dirs = [d for d in root.iterdir()
+                    if d.is_dir() and not d.name.startswith("debate-")
+                    and (d / "recommendation.json").is_file()]
+        except FileNotFoundError:
+            return []
+        dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+        rows: list[dict[str, Any]] = []
+        for d in dirs[:limit]:
+            try:
+                rec = json.loads((d / "recommendation.json").read_text())
+            except (OSError, ValueError):
+                continue
+            tickers = rec.get("tickers", []) or []
+            consensus = rec.get("consensus", {}) or {}
+            first = consensus.get(tickers[0], {}) if tickers else {}
+            rows.append({
+                "run_id": rec.get("run_id", d.name),
+                "tickers": tickers,
+                "as_of": rec.get("as_of", ""),
+                "stars": first.get("stars", ""),
+                "stars_label": first.get("stars_label", ""),
+            })
+        return rows
+
     # ── Internal ───────────────────────────────────────────
 
     def _write_json(self, name: str, payload: Any) -> None:

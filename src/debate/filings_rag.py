@@ -13,8 +13,10 @@ import time
 import urllib.request
 from dataclasses import dataclass, field
 
-SEC_UA = os.environ.get("SEC_USER_AGENT", "analyst-debate-prototype tech.admin@credilinq.ai")
-CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".cache")
+SEC_UA = os.environ.get("SEC_USER_AGENT", "nova-trader/0.1 research@example.com")
+CACHE_DIR = os.environ.get("NOVA_DEBATE_SEC_CACHE_DIR") or os.path.join(
+    os.path.expanduser("~"), ".nova-trader", "debate-sec-cache"
+)  # keep the cache out of the source tree (consistent with src/tools/sec_filings.py)
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 
 _CHUNK_CHARS = 1200

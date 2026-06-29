@@ -57,7 +57,7 @@ from src.agents._text import clip as _snippet190, term_count as _term_count
 
 
 def _snippet(text: str) -> str:
-    return _snippet190(text, 190)
+    return _snippet190(text, 800)
 
 
 def run_web_research_agent(ctx: RunContext, view: WebResearchView, recorder=None) -> Signal:  # noqa: ARG001
@@ -86,12 +86,11 @@ def run_web_research_agent(ctx: RunContext, view: WebResearchView, recorder=None
                         snippet=_snippet(result.snippet),
                     )
                 )
-            if len(evidence) < 5:
-                snippet = _snippet(result.snippet)
-                if snippet:
-                    evidence.append(f"{result.title}: {snippet} ({result.url})")
-                else:
-                    evidence.append(f"{result.title} ({result.url})")
+            snippet = _snippet(result.snippet)
+            if snippet:
+                evidence.append(f"{result.title}: {snippet} ({result.url})")
+            else:
+                evidence.append(f"{result.title} ({result.url})")
 
         total_terms = max(constructive + risk, 1)
         score = (constructive - risk) / total_terms
@@ -120,7 +119,7 @@ def run_web_research_agent(ctx: RunContext, view: WebResearchView, recorder=None
                 f"source_count={len(view.results)}",
                 *evidence,
             ],
-            web_sources=web_sources[:8],
+            web_sources=web_sources,
         )
     except Exception as exc:
         logger.exception("web research agent failed for %s", view.ticker)

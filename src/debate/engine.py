@@ -34,8 +34,6 @@ SYNTH_TIMEOUT_S = int(os.getenv("NOVA_DEBATE_SYNTH_TIMEOUT", "180"))
 
 WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}  # dynamic filtering built in
 
-WEB_SEARCH_TOOL = {"type": "web_search_20260209", "name": "web_search"}  # dynamic filtering built in
-
 # Client-side custom tool: retrieval over the company's real 10-K / 10-Q filings.
 SEARCH_FILINGS_TOOL = {
     "name": "search_filings",

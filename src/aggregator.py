@@ -9,6 +9,25 @@ from __future__ import annotations
 
 from src.schemas.signals import Consensus, Signal
 
+# S&P STARS analog: map the normalized weighted score [-1, 1] onto a 1–5 rating.
+# Thresholds mirror the bullish/bearish direction cut (±0.10) so the star and the
+# direction never disagree, with ±0.40 marking strong conviction.
+_STARS_LABELS = {5: "Strong Buy", 4: "Buy", 3: "Hold", 2: "Sell", 1: "Strong Sell"}
+
+
+def _stars(weighted_score: float) -> tuple[int, str]:
+    if weighted_score >= 0.40:
+        n = 5
+    elif weighted_score >= 0.10:
+        n = 4
+    elif weighted_score > -0.10:
+        n = 3
+    elif weighted_score > -0.40:
+        n = 2
+    else:
+        n = 1
+    return n, _STARS_LABELS[n]
+
 
 def compute_consensus(signals: list[Signal], tickers: list[str]) -> dict[str, Consensus]:
     """Build one Consensus per ticker from the signals list."""
@@ -51,6 +70,7 @@ def compute_consensus(signals: list[Signal], tickers: list[str]) -> dict[str, Co
                 direction="neutral",
                 confidence=0.0,
                 weighted_score=0.0,
+                stars=3, stars_label="Hold",
                 bull_count=0, bear_count=0, neutral_count=0,
                 contributing=contributing,
                 abstained=abstained,
@@ -67,11 +87,14 @@ def compute_consensus(signals: list[Signal], tickers: list[str]) -> dict[str, Co
         else:
             direction = "neutral"
 
+        stars, stars_label = _stars(normalized_score)
         consensus[ticker] = Consensus(
             ticker=ticker,
             direction=direction,
             confidence=avg_confidence,
             weighted_score=normalized_score,
+            stars=stars,
+            stars_label=stars_label,
             bull_count=bull,
             bear_count=bear,
             neutral_count=neutral,

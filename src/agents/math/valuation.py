@@ -121,6 +121,16 @@ def calculate_residual_income_value(
 # Enhanced DCF Helper Functions
 ####################################
 
+def calculate_cost_of_equity(
+    beta_proxy: float = 1.0,
+    risk_free_rate: float = 0.045,
+    market_risk_premium: float = 0.06,
+) -> float:
+    """Equity investor's required return via CAPM — the right rate to drift a
+    fair value forward into a 12-month price target."""
+    return risk_free_rate + beta_proxy * market_risk_premium
+
+
 def calculate_wacc(
     market_cap: float,
     total_debt: float | None,
@@ -132,9 +142,9 @@ def calculate_wacc(
     market_risk_premium: float = 0.06
 ) -> float:
     """Calculate WACC using available financial data."""
-    
+
     # Cost of Equity (CAPM)
-    cost_of_equity = risk_free_rate + beta_proxy * market_risk_premium
+    cost_of_equity = calculate_cost_of_equity(beta_proxy, risk_free_rate, market_risk_premium)
     
     # Cost of Debt - estimate from interest coverage
     if interest_coverage and interest_coverage > 0:

@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nova Trader — Research Methodology (one-pager)</title>
+<style>
+  :root{--ink:#1b2430;--muted:#5b6573;--line:#d7dde5;--fund:#caa024;--val:#3f6aab;
+        --built:#1e8a4c;--partial:#c98a12;--gap:#b4392b}
+  *{box-sizing:border-box}
+  body{margin:0;background:#e7ebf0;color:var(--ink);
+    font:14.5px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .page{max-width:840px;margin:0 auto;background:#fff;padding:42px 52px 56px;
+    box-shadow:0 2px 16px rgba(0,0,0,.12)}
+  .kicker{font-size:11.5px;letter-spacing:2.5px;text-transform:uppercase;color:var(--muted);font-weight:700}
+  h1{font-family:Georgia,"Times New Roman",serif;font-size:30px;margin:4px 0 2px;line-height:1.15}
+  .lede{font-size:15.5px;color:#36404c;margin:10px 0 22px;border-left:4px solid var(--val);padding-left:14px}
+  h2{font-size:17px;margin:26px 0 8px;padding-bottom:5px;border-bottom:2px solid var(--line)}
+  p{margin:9px 0}
+  strong{color:var(--ink)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0}
+  .box{border:1px solid var(--line);border-radius:9px;padding:13px 15px;background:#fafbfc}
+  .box.sig{border-top:4px solid var(--fund)} .box.deb{border-top:4px solid var(--val)}
+  .box h3{margin:0 0 5px;font-size:15px}
+  .box p{margin:5px 0 0;font-size:13px;color:#3a434f}
+  .nums{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:14px 0}
+  .num{border:1px solid var(--line);border-radius:9px;padding:14px 16px;text-align:center;background:#fafbfc}
+  .num b{display:block;font-size:32px;line-height:1}
+  .num span{font-size:12.5px;color:var(--muted)}
+  ul{margin:8px 0;padding-left:20px}
+  li{margin:5px 0}
+  .tag{font-weight:800;font-size:10.5px;padding:1px 8px;border-radius:999px;color:#fff;margin-right:5px}
+  .t-built{background:var(--built)} .t-partial{background:var(--partial)} .t-gap{background:var(--gap)}
+  .foot{margin-top:26px;border-top:1px solid var(--line);padding-top:12px;font-size:12px;color:var(--muted)}
+  @page{size:A4;margin:14mm}
+  @media print{body{background:#fff}.page{box-shadow:none;max-width:none;padding:0}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact}h2,.box,.num{break-inside:avoid}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="kicker">Nova Trader · Internal Brief</div>
+  <h1>How Nova Researches a Stock — and How Far It Goes</h1>
+  <div class="lede">Nova automates the analytical core of professional equity research, modeled directly on the Standard &amp; Poor's bottom-up methodology. This pager explains what the system does, how it works, and — honestly — how much of a human analyst's job it covers today.</div>
+
+  <h2>The short version</h2>
+  <p>A human equity analyst follows a roughly 11-step process: read a company's filings, talk to its management, build an earnings forecast, size up the competition, value the business, set a price target and rating, and then keep re-checking it over time. Nova reproduces the <strong>analytical spine</strong> of that process — the reading, the valuation, the recommendation, and a built-in challenge to the thesis — while the parts that depend on human relationships (calling executives) sit outside what any software can do.</p>
+
+  <div class="nums">
+    <div class="num"><b style="color:var(--partial)">~43%</b><span>of a <strong>full</strong> analyst's job, automated end-to-end (counting steps no software can do)</span></div>
+    <div class="num"><b style="color:var(--built)">~51%</b><span>of the <strong>automatable</strong> job — the fairer measure of the system itself</span></div>
+  </div>
+
+  <h2>Two engines do the work</h2>
+  <p>Nova answers any question about a stock with two complementary systems. They cover different halves of the analyst's job — one is the quant, one is the research team.</p>
+  <div class="two">
+    <div class="box sig"><h3>⚙️ Signals — the quant analyst</h3>
+      <p>Ten deterministic agents crunch the numbers: a four-method intrinsic valuation (DCF, owner earnings, EV/EBITDA, residual income), fundamentals, growth, technicals, news and insider sentiment, and a "Warren Buffett" scoring persona. Deterministic means the same inputs always produce the same answer — it is auditable and reproducible, which matters for a regulated discipline.</p></div>
+    <div class="box deb"><h3>💬 Debate — the research pod</h3>
+      <p>An AI team that reasons like analysts arguing in a room: a supervisor breaks the question into mandates, four specialists (fundamental, sentiment, valuation, macro) research SEC filings and the live web, a "bear" challenger attacks the thesis, and a synthesizer judges the evidence and writes a cited verdict. Every claim carries a source.</p></div>
+  </div>
+
+  <h2>What it has genuinely built <span class="tag t-built">BUILT</span></h2>
+  <ul>
+    <li><strong>Reads the filings (Step 1).</strong> Fetches real SEC 10-K/10-Q documents, finds the relevant passages, and cites them back to the source.</li>
+    <li><strong>Values the company (Step 7).</strong> A proper multi-method discounted-cash-flow model with bear / base / bull scenarios — real finance, not hand-waving.</li>
+    <li><strong>Sets a price target (Step 8).</strong> Now produces an explicit 12-month target price — fair value carried forward one year at the cost of equity — with the upside versus today's price.</li>
+    <li><strong>Makes the call (Step 9).</strong> Issues a 1–5 STARS rating (Strong Buy … Strong Sell) plus a confidence-scored Buy / Sell / Hold — direct parity with S&amp;P's STARS.</li>
+    <li><strong>Stress-tests the thesis (Step 10).</strong> The bear-versus-synthesizer debate is an adversarial review that goes <em>deeper</em> than S&amp;P's static chart even depicts.</li>
+  </ul>
+
+  <h2>Where it is partial or missing <span class="tag t-partial">PARTIAL</span> <span class="tag t-gap">GAP</span></h2>
+  <ul>
+    <li><strong>Talking to management (Steps 2 &amp; 4) — human-only.</strong> Calling executives and validating forecasts with them is a relationship, not a computation. Out of scope by nature.</li>
+    <li><strong>Earnings forecast &amp; competitive analysis (Steps 3, 5, 6).</strong> Nova projects cash flows and assesses competition, but does not yet publish a clean 3-year EPS model, a structured five-forces analysis, or the S&amp;P "Core Earnings" accounting clean-up.</li>
+    <li><strong>Ongoing re-coverage (Step 11).</strong> Every run is saved, but there is no scheduler that automatically re-checks a stock each quarter.</li>
+  </ul>
+
+  <h2>The path to bigger numbers</h2>
+  <p><strong>Done already:</strong> the two quickest wins are now shipped. The <strong>12-month target price (Step 8)</strong> and the <strong>1–5 STARS rating (Step 9)</strong> were nearly free — the valuation math already existed, it simply wasn't surfaced — and they lift overall coverage from ~38% to <strong>~43%</strong> (full job) and ~45% to <strong>~51%</strong> (automatable), flipping both boxes to solidly "Built."</p>
+  <p><strong>Next, to push further:</strong></p>
+  <ul>
+    <li><strong>Peer relative valuation (Step 7)</strong> and <strong>Core Earnings normalization (Step 6)</strong> — bounded, days-not-weeks additions that complete the valuation story (toward ~60%+).</li>
+    <li><strong>Structured five-forces (Step 5)</strong> and a <strong>forward 3-year EPS model (Step 3)</strong> — mostly prompt/derivation work on data we already pull.</li>
+    <li><strong>Scheduled re-coverage (Step 11)</strong> — the heaviest item (real infrastructure), best saved for last.</li>
+  </ul>
+
+  <div class="foot">Companion artifacts: <strong>methodology.pdf</strong> (detailed step-by-step chart) and <strong>methodology-exec.pdf</strong> (one-glance executive chart). Figures are estimates derived from the source code, intended for internal planning and deck preparation.</div>
+
+</div>
+</body>
+</html>

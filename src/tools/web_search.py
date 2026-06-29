@@ -110,6 +110,64 @@ def _search_tavily(query: str, ticker: str, limit: int) -> list[WebSearchResult]
     return [item for item in out if item.title and item.url]
 
 
+def _extract_json_array(text: str) -> list[dict]:
+    """Pull a JSON array out of model text (tolerates ```json fences / surrounding prose)."""
+    import json
+    s = (text or "").strip()
+    start, end = s.find("["), s.rfind("]")
+    if start == -1 or end <= start:
+        return []
+    try:
+        data = json.loads(s[start : end + 1])
+    except json.JSONDecodeError:
+        return []
+    return data if isinstance(data, list) else []
+
+
+def _search_claude_native(query: str, ticker: str, limit: int) -> list[WebSearchResult]:
+    """Use Claude's own server-side web_search tool — reliable from datacenters (no
+    third-party key, unlike the DuckDuckGo scrape which gets IP-blocked on cloud hosts).
+    Claude searches, then returns the results as JSON we parse into WebSearchResult."""
+    key = os.getenv("ANTHROPIC_API_KEY")
+    if not key:
+        return []
+    from anthropic import Anthropic
+
+    client = Anthropic(api_key=key)
+    model = os.getenv("NOVA_WEB_SEARCH_MODEL", "claude-haiku-4-5")
+    tool = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
+    prompt = (
+        f"Search the web for recent, relevant information about: {query}\n\n"
+        f"Then return ONLY a JSON array of up to {limit} objects, each exactly "
+        '{"title": "...", "url": "https://...", "snippet": "1-2 sentence summary"} '
+        "using the real titles and URLs you found. Output nothing except the JSON array."
+    )
+    messages = [{"role": "user", "content": prompt}]
+    resp = None
+    for _ in range(4):  # web_search can return pause_turn; continue until it settles
+        resp = client.messages.create(model=model, max_tokens=2000, tools=[tool], messages=messages)
+        if resp.stop_reason == "pause_turn":
+            messages.append({"role": "assistant", "content": resp.content})
+            continue
+        break
+    text = "".join(getattr(b, "text", "") for b in (resp.content if resp else []) if getattr(b, "type", "") == "text")
+    out: list[WebSearchResult] = []
+    seen: set[str] = set()
+    for item in _extract_json_array(text)[:limit]:
+        url = str(item.get("url", "")) if isinstance(item, dict) else ""
+        if not url or url in seen:
+            continue
+        seen.add(url)
+        out.append(WebSearchResult(
+            ticker=ticker,
+            title=_clean_text(item.get("title", "")),
+            url=url,
+            snippet=_clean_text(item.get("snippet", "")),
+            source="claude",
+        ))
+    return [item for item in out if item.title and item.url]
+
+
 def _search_duckduckgo(query: str, ticker: str, limit: int) -> list[WebSearchResult]:
     response = requests.get(
         "https://duckduckgo.com/html/",
@@ -160,4 +218,16 @@ def get_web_research(ticker: str, *, question: str = "", limit: int = 8) -> list
         tavily = []
     if tavily:
         return tavily
-    return _search_duckduckgo(query, ticker, limit)
+    # Tavily (if keyed) → Claude native search (reliable on cloud) → DuckDuckGo (last resort).
+    try:
+        native = _search_claude_native(query, ticker, limit)
+    except Exception as exc:
+        logger.warning("Claude web search failed for %s: %s", ticker, exc)
+        native = []
+    if native:
+        return native
+    try:
+        return _search_duckduckgo(query, ticker, limit)
+    except Exception as exc:
+        logger.warning("DuckDuckGo web search failed for %s: %s", ticker, exc)
+        return []

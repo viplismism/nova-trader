@@ -42,3 +42,9 @@ htmlcov/
 
 # Local scratch/reference files
 /lightgbm-investment-families.py
+
+# Claude Code local settings/skills (not versioned)
+.claude/
+
+# Generated PDF artifacts (regenerable from the docs/*.html)
+docs/*.pdf
