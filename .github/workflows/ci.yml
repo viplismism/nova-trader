@@ -30,4 +30,6 @@ jobs:
           pip install pytest       # test runner (in Poetry's dev group, not in the wheel)
 
       - name: Run tests
-        run: pytest -q
+        # `python -m pytest` (not bare `pytest`) puts the repo root on sys.path so
+        # tests that do `from tests... import` resolve, matching local runs.
+        run: python -m pytest -q
