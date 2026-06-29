@@ -1,0 +1,33 @@
+name: CI
+
+# Continuous Integration: build the package and run the test suite on every push
+# and pull request. This is the gate — deploys (see deploy.yml) only run after this
+# passes, so broken code never reaches staging or prod.
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package + test runner
+        run: |
+          pip install --upgrade pip
+          pip install .            # main dependencies (pyproject)
+          pip install pytest       # test runner (in Poetry's dev group, not in the wheel)
+
+      - name: Run tests
+        run: pytest -q
