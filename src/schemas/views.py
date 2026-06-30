@@ -18,6 +18,7 @@ from src.data.models import (
     InsiderTrade,
     LineItem,
     Price,
+    RedditPost,
     WebSearchResult,
 )
 from src.schemas.portfolio import Portfolio
@@ -99,6 +100,15 @@ class WebResearchView(BaseModel):
 
     ticker: str
     results: list[WebSearchResult]
+
+    model_config = {"arbitrary_types_allowed": True}
+
+
+class RedditView(BaseModel):
+    """For the Reddit / retail-sentiment analyst."""
+
+    ticker: str
+    posts: list[RedditPost]
 
     model_config = {"arbitrary_types_allowed": True}
 

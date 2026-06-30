@@ -23,6 +23,8 @@ def test_get_web_research_uses_duckduckgo_fallback(monkeypatch):
         return _FakeResponse()
 
     monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    # Isolate the DuckDuckGo fallback: neutralize the Claude-native step in between.
+    monkeypatch.setattr("src.tools.web_search._search_claude_native", lambda *a, **k: [])
     monkeypatch.setattr("src.tools.web_search.requests.get", fake_get)
 
     results = get_web_research("aapl", limit=3)
@@ -42,6 +44,7 @@ def test_get_web_research_falls_back_when_tavily_errors(monkeypatch):
         return _FakeResponse()
 
     monkeypatch.setenv("TAVILY_API_KEY", "configured-but-bad")
+    monkeypatch.setattr("src.tools.web_search._search_claude_native", lambda *a, **k: [])
     monkeypatch.setattr("src.tools.web_search.requests.post", fake_post)
     monkeypatch.setattr("src.tools.web_search.requests.get", fake_get)
 
