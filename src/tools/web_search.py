@@ -135,7 +135,8 @@ def _search_claude_native(query: str, ticker: str, limit: int) -> list[WebSearch
 
     client = Anthropic(api_key=key)
     model = os.getenv("NOVA_WEB_SEARCH_MODEL", "claude-haiku-4-5")
-    tool = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3}
+    # allowed_callers=["direct"] lets non-programmatic-tool models (e.g. Haiku) use the tool
+    tool = {"type": "web_search_20260209", "name": "web_search", "max_uses": 3, "allowed_callers": ["direct"]}
     prompt = (
         f"Search the web for recent, relevant information about: {query}\n\n"
         f"Then return ONLY a JSON array of up to {limit} objects, each exactly "
