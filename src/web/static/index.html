@@ -71,7 +71,8 @@
     .recent { max-height: 14vh; overflow: auto; padding: 6px 8px; display: grid; gap: 4px; }
     .recent-item { padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; color: var(--ink); font-size: 12px; }
     .recent-item:hover { border-color: var(--teal); background: #141917; }
-    .recent-q { display: block; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .recent-q { display: block; color: var(--muted); margin-top: 2px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+    .recent-item { overflow-wrap: anywhere; }
     .activity { overflow: auto; padding: 8px; flex: 1; min-height: 200px; }
     #recentWrap, #recentRunsWrap { flex: none; }
     .activity-row {
@@ -746,10 +747,12 @@
       }catch(_){ el.innerHTML='<div class="empty" style="padding:4px">Could not load recent runs.</div>'; }
     }
     async function openSignalsRun(runId){
+      if(state.mode!=="signals") setMode("signals");
+      resetMode("signals");   // each opened run gets its OWN fresh chat/history, not appended to the last
       setState("loading…");
       try{
         const j=await (await fetch(`/api/run/result?run_id=${encodeURIComponent(runId)}`)).json();
-        if(j.status==="done"){ if(state.mode!=="signals") setMode("signals"); renderDone(j); }
+        if(j.status==="done"){ renderDone(j); }
         else { pushVerdict("signals","That run could not be loaded.","error"); setState("ready"); }
       }catch(_){ setState("error"); pushVerdict("signals","Failed to load that run.","error"); }
     }
