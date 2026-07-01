@@ -48,6 +48,9 @@
       font-size: 13px; text-transform: uppercase; flex: none;
     }
     .panel-body { min-height: 0; overflow: auto; }
+    /* Left controls column scrolls as a whole, so the Recent + Activity sections
+       are always reachable even when the (tall) Debate form pushes them down. */
+    #leftPanel { overflow-y: auto; }
 
     form.controls { display: grid; gap: 9px; padding: 12px; border-bottom: 1px solid var(--line); flex: none; }
     label { display: grid; gap: 5px; color: var(--muted); font-size: 11px; text-transform: uppercase; }
@@ -202,7 +205,7 @@
     </header>
 
     <main>
-      <section class="panel">
+      <section class="panel" id="leftPanel">
         <h2 id="runTitle">Run</h2>
         <!-- Signals (deterministic) controls -->
         <form id="runForm" class="controls">
