@@ -18,7 +18,6 @@ from src.tools.api import (
     get_prices,
     search_line_items,
 )
-from src.tools.reddit import get_reddit_posts
 from src.tools.sec_filings import get_sec_filing_excerpts
 from src.tools.web_search import get_web_research
 from src.utils.progress import current_fetch_owner, progress
@@ -67,7 +66,6 @@ def _build_snapshot_body(ctx: RunContext, snapshot: MarketSnapshot, api_key: str
     selected = set(ctx.request.selected_agents or [])
     fetch_filings = not selected or "sec_filings" in selected
     fetch_web = not selected or "web_research" in selected
-    fetch_reddit = not selected or "reddit_sentiment" in selected
     for ticker in ctx.tickers:
         progress.update_status("snapshot", ticker, "Fetching prices")
         try:
@@ -162,15 +160,5 @@ def _build_snapshot_body(ctx: RunContext, snapshot: MarketSnapshot, api_key: str
                 snapshot.web_research[ticker] = []
         else:
             snapshot.web_research[ticker] = []
-
-        if fetch_reddit:
-            progress.update_status("snapshot", ticker, "Reading Reddit")
-            try:
-                snapshot.reddit[ticker] = get_reddit_posts(ticker=ticker) or []
-            except Exception as e:
-                logger.warning("snapshot reddit failed for %s: %s", ticker, e)
-                snapshot.reddit[ticker] = []
-        else:
-            snapshot.reddit[ticker] = []
 
         progress.update_status("snapshot", ticker, "Done")

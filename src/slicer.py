@@ -19,7 +19,6 @@ from src.schemas.portfolio import Portfolio
 from src.schemas.views import (
     AdaptiveResearchView,
     FilingsView,
-    RedditView,
     FinancialsView,
     InsiderView,
     NewsSentimentView,
@@ -89,13 +88,6 @@ def _build_web_research_view(snapshot: MarketSnapshot, ticker: str) -> WebResear
     )
 
 
-def _build_reddit_view(snapshot: MarketSnapshot, ticker: str) -> "RedditView":
-    return RedditView(
-        ticker=ticker,
-        posts=snapshot.reddit.get(ticker, []),
-    )
-
-
 def _build_adaptive_research_view(snapshot: MarketSnapshot, ticker: str) -> AdaptiveResearchView:
     return AdaptiveResearchView(
         ticker=ticker,
@@ -116,7 +108,6 @@ PER_TICKER_BUILDERS: dict[Type[BaseModel], Callable[[MarketSnapshot, str], BaseM
     InsiderView: _build_insider_view,
     FilingsView: _build_filings_view,
     WebResearchView: _build_web_research_view,
-    RedditView: _build_reddit_view,
 }
 
 

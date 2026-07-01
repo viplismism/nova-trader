@@ -113,20 +113,6 @@ class CompanyNewsResponse(BaseModel):
     news: list[CompanyNews]
 
 
-class RedditPost(BaseModel):
-    """A Reddit post about a ticker, with its top comments — the retail-sentiment lens."""
-
-    ticker: str
-    subreddit: str
-    title: str
-    body: str = ""
-    score: int = 0           # net upvotes (a proxy for how much the post resonated)
-    num_comments: int = 0
-    created_utc: float = 0.0
-    permalink: str = ""      # full https URL to the thread
-    top_comments: list[str] = []
-
-
 class FilingExcerpt(BaseModel):
     ticker: str
     chunk_id: str

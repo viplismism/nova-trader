@@ -15,7 +15,6 @@ from src.data.models import (
     InsiderTrade,
     LineItem,
     Price,
-    RedditPost,
     WebSearchResult,
 )
 
@@ -37,7 +36,6 @@ class MarketSnapshot(BaseModel):
     insider: dict[Ticker, list[InsiderTrade]] = Field(default_factory=dict)
     filings: dict[Ticker, list[FilingExcerpt]] = Field(default_factory=dict)
     web_research: dict[Ticker, list[WebSearchResult]] = Field(default_factory=dict)
-    reddit: dict[Ticker, list[RedditPost]] = Field(default_factory=dict)
     market_cap: dict[Ticker, float | None] = Field(default_factory=dict)
 
     model_config = {"arbitrary_types_allowed": True}
