@@ -4,7 +4,7 @@ from src.web.server import _parse_tickers, app
 
 
 def test_web_app_imports():
-    assert app.title == "Nova Trader"
+    assert app.title == "AlphaDesk"
 
 
 def test_parse_tickers_deduplicates_and_validates():

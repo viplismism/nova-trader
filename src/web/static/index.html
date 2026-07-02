@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nova Trader</title>
+  <title>AlphaDesk</title>
   <style>
     :root {
       --bg: #090a0a; --panel: #101312; --panel-2: #151817; --ink: #e8ece9;
@@ -196,7 +196,7 @@
 <body>
   <div class="shell">
     <header>
-      <div class="brand"><span class="brand-mark"></span><span>Nova Trader</span></div>
+      <div class="brand"><span class="brand-mark"></span><span>AlphaDesk</span></div>
       <div class="mode-toggle">
         <button id="modeSignals" class="on" type="button">Signals</button>
         <button id="modeDebate" type="button">Debate</button>
@@ -299,7 +299,7 @@
       <div id="chatMsgs" class="chat-msgs"><div class="empty">The run verdict appears here; then ask follow-ups.</div></div>
       <div id="saved" class="saved"></div>
       <form id="askForm" class="chat-input">
-        <textarea id="question" placeholder="Ask Nova about this run…" spellcheck="true"></textarea>
+        <textarea id="question" placeholder="Ask AlphaDesk about this run…" spellcheck="true"></textarea>
         <button id="askButton" class="primary" type="submit" disabled>Ask</button>
       </form>
     </section>
@@ -450,13 +450,13 @@
       const msgs=M().chat;
       $("chatMsgs").innerHTML = msgs.length ? msgs.map(m=> m.role==="user"
         ? `<div class="bubble user">${esc(m.text)}</div>`
-        : `<div class="bubble nova"><span class="who">${esc(m.who||"Nova")}</span>${m.html||paragraphs(m.text)}</div>`).join("")
+        : `<div class="bubble nova"><span class="who">${esc(m.who||"AlphaDesk")}</span>${m.html||paragraphs(m.text)}</div>`).join("")
         : '<div class="empty">The run verdict appears here; then ask follow-ups.</div>';
       $("chatMsgs").scrollTop=$("chatMsgs").scrollHeight;
       $("saved").textContent=M().saved||"";
     }
     function pushChat(mode, msg){ state.modes[mode].chat.push(msg); if(mode===state.mode) renderChat(); return msg; }
-    function pushVerdict(mode, text, who){ pushChat(mode,{role:"nova",who:who||"Nova — verdict",text}); }
+    function pushVerdict(mode, text, who){ pushChat(mode,{role:"nova",who:who||"AlphaDesk — verdict",text}); }
 
     // ── signal cards (deterministic mode) ──
     function renderCard(card){
@@ -604,7 +604,7 @@
     function renderDone(p){
       const b=state.modes.signals;
       b.runId=p.run_id; b.cards=p.cards||[]; b.llmLogs=p.llm_logs||{}; b.saved=p.saved_to?`saved: ${p.saved_to}`:"";
-      if(p.verdict||p.summary) b.chat.push({role:"nova",who:"Nova — verdict",text:p.verdict||p.summary});
+      if(p.verdict||p.summary) b.chat.push({role:"nova",who:"AlphaDesk — verdict",text:p.verdict||p.summary});
       finalizeActivity("signals");
       setState("ready"); $("runButton").disabled=false; $("stopButton").disabled=true;
       if(state.mode==="signals"){ renderResults(); renderInspector(); renderChat(); $("askButton").disabled=!b.runId; }
@@ -644,7 +644,7 @@
       D.runId=d.run_id||D.debate.run_id||null; if(d.llm_logs) D.llmLogs=d.llm_logs;
       if(d.usage) D.saved=`usage: ${d.usage}`;
       const m=D.debate.memo;
-      if(m && !D._memoPushed){ D.chat.push({role:"nova",who:"Nova — research memo",text:`${m.ticker}: ${String(m.conviction).toUpperCase()} conviction, ${m.directional_lean}.\n\n${m.base_case}`}); D._memoPushed=true; }
+      if(m && !D._memoPushed){ D.chat.push({role:"nova",who:"AlphaDesk — research memo",text:`${m.ticker}: ${String(m.conviction).toUpperCase()} conviction, ${m.directional_lean}.\n\n${m.base_case}`}); D._memoPushed=true; }
       finalizeActivity("debate");
       setState("ready"); $("debateButton").disabled=false; $("debateStop").disabled=true;
       if(state.mode==="debate"){ renderDebate(); renderChat(); $("askButton").disabled=!D.runId; loadRecent(); }
@@ -768,7 +768,7 @@
       if(state.askSource) state.askSource.close();
       $("question").value="";
       pushChat(mode,{role:"user",text:q});
-      const bubble=pushChat(mode,{role:"nova",who:"Nova",text:"…"});
+      const bubble=pushChat(mode,{role:"nova",who:"AlphaDesk",text:"…"});
       let answer="";
       const p=new URLSearchParams({run_id:runId,question:q,provider:$("provider").value,model:$("model").value});
       const src=new EventSource(`/api/ask?${p}`); state.askSource=src;

@@ -1,7 +1,7 @@
 <aside>
 🧭
 
-Nova Trader is an investment-research system built from two complementary engines:
+AlphaDesk is an investment-research system built from two complementary engines:
 
 - **Signals engine:** eight deterministic agents plus two LLM-assisted research agents that convert market, financial, news, insider, web, and SEC data into directional signals.
 - **Debate engine:** an LLM research pod that plans, investigates, challenges, and synthesizes an investment memo from evidence.
@@ -12,7 +12,7 @@ The goal of this page is to make every agent easy to understand at two levels: *
 
 ## System architecture
 
-Nova has three major layers:
+AlphaDesk has three major layers:
 
 1. **Evidence collection** - market prices, fundamentals, filings, news, insider trades, and live web sources.
 2. **Agent interpretation** - deterministic agents and LLM research agents turn raw evidence into views, scores, citations, and risks.
@@ -28,13 +28,13 @@ Nova has three major layers:
 
 ## Part 1 — Signals engine
 
-The Signals engine is the quantitative and data-driven core of Nova. Most agents are deterministic and rules-based; Adaptive Research and Warren Buffett are LLM-assisted. Each agent looks at one lens of the company, emits a bullish / bearish / neutral view, and attaches confidence plus supporting factors.
+The Signals engine is the quantitative and data-driven core of AlphaDesk. Most agents are deterministic and rules-based; Adaptive Research and Warren Buffett are LLM-assisted. Each agent looks at one lens of the company, emits a bullish / bearish / neutral view, and attaches confidence plus supporting factors.
 
 ## 1. Technical Analyst · `technical`
 
 ### What this agent is meant to do
 
-The Technical Analyst is Nova's market-behavior reader. Its job is to answer: **what is the price action saying right now?**
+The Technical Analyst is AlphaDesk's market-behavior reader. Its job is to answer: **what is the price action saying right now?**
 
 It does not try to decide whether the company is fundamentally good or bad. Instead, it studies historical price patterns to detect trend, momentum, mean reversion, volatility setup, and statistical behavior. This makes it useful for timing, entry quality, short-term risk, and confirming or challenging the longer-term thesis.
 
@@ -61,7 +61,7 @@ It does not try to decide whether the company is fundamentally good or bad. Inst
 
 ### What this agent is meant to do
 
-The Fundamentals Analyst is Nova's business-quality checker. Its job is to answer: **does this company look financially strong based on its latest reported metrics?**
+The Fundamentals Analyst is AlphaDesk's business-quality checker. Its job is to answer: **does this company look financially strong based on its latest reported metrics?**
 
 It focuses on profitability, growth, balance-sheet health, and basic valuation sanity. This agent is useful for quickly separating companies with strong operating metrics from companies where the business quality or financial condition looks weak.
 
@@ -85,7 +85,7 @@ It focuses on profitability, growth, balance-sheet health, and basic valuation s
 
 ### What this agent is meant to do
 
-The Growth Analyst is Nova's compounding-potential lens. Its job is to answer: **is this company growing in a way that looks durable and financially healthy?**
+The Growth Analyst is AlphaDesk's compounding-potential lens. Its job is to answer: **is this company growing in a way that looks durable and financially healthy?**
 
 It looks beyond one-period numbers and checks whether growth trends, valuation, margins, and balance-sheet health support a growth thesis. This is especially useful for companies where the investment case depends on expansion, reinvestment, and future earnings power.
 
@@ -109,7 +109,7 @@ It looks beyond one-period numbers and checks whether growth trends, valuation, 
 
 ### What this agent is meant to do
 
-The Valuation Analyst is Nova's intrinsic-value engine. Its job is to answer: **what is the company worth compared with what the market is currently pricing?**
+The Valuation Analyst is AlphaDesk's intrinsic-value engine. Its job is to answer: **what is the company worth compared with what the market is currently pricing?**
 
 It does not rely on a single valuation technique. Instead, it blends several models so that the conclusion is not overly dependent on one assumption set. It also produces a 12-month price target, which makes the valuation output easier to connect to portfolio decisions and upside/downside framing.
 
@@ -139,7 +139,7 @@ It does not rely on a single valuation technique. Instead, it blends several mod
 
 ### What this agent is meant to do
 
-The News Sentiment Analyst is Nova's news-flow reader. Its job is to answer: **is recent company news helping or hurting the investment narrative?**
+The News Sentiment Analyst is AlphaDesk's news-flow reader. Its job is to answer: **is recent company news helping or hurting the investment narrative?**
 
 It captures the market narrative around the company: product updates, guidance, management commentary, legal issues, analyst reactions, customer momentum, competitive pressure, and other headline-level catalysts.
 
@@ -163,7 +163,7 @@ It captures the market narrative around the company: product updates, guidance, 
 
 ### What this agent is meant to do
 
-The Insider Sentiment Analyst is Nova's management-and-insider behavior lens. Its job is to answer: **are insiders buying or selling in a way that changes the thesis?**
+The Insider Sentiment Analyst is AlphaDesk's management-and-insider behavior lens. Its job is to answer: **are insiders buying or selling in a way that changes the thesis?**
 
 Insider buying can indicate confidence, while heavy insider selling can introduce caution. This signal should not be treated as a full investment thesis by itself, but it is a useful behavioural input.
 
@@ -184,7 +184,7 @@ Insider buying can indicate confidence, while heavy insider selling can introduc
 
 ### What this agent is meant to do
 
-The Web Research Analyst is Nova's external-research scanner. Its job is to answer: **what does the live web say about the company right now?**
+The Web Research Analyst is AlphaDesk's external-research scanner. Its job is to answer: **what does the live web say about the company right now?**
 
 This agent helps catch information that may not be present in structured financial data yet: product announcements, legal/regulatory updates, competitive news, demand commentary, sector narratives, and recent market discussion.
 
@@ -206,7 +206,7 @@ This agent helps catch information that may not be present in structured financi
 
 ### What this agent is meant to do
 
-The SEC Filings Analyst is Nova's official-disclosure reader. Its job is to answer: **what do the company's own filings reveal about the business, risks, and management commentary?**
+The SEC Filings Analyst is AlphaDesk's official-disclosure reader. Its job is to answer: **what do the company's own filings reveal about the business, risks, and management commentary?**
 
 This is the highest-trust source layer because it uses primary documents. It helps ground the thesis in audited or formally filed company disclosures instead of relying only on headlines or market narratives.
 
@@ -228,7 +228,7 @@ This is the highest-trust source layer because it uses primary documents. It hel
 
 ### What this agent is meant to do
 
-The Adaptive Research Analyst is Nova's flexible investigator. Its job is to answer: **what should we research for this ticker, and what does that research imply?**
+The Adaptive Research Analyst is AlphaDesk's flexible investigator. Its job is to answer: **what should we research for this ticker, and what does that research imply?**
 
 Unlike a fixed rules-only agent, it can plan a custom research path. It decides what to look for across metrics, news, filings, and web results, then synthesizes the evidence into a signal. This is useful when a ticker has a non-standard story or when the most important question changes by company.
 
@@ -237,7 +237,7 @@ Unlike a fixed rules-only agent, it can plan a custom research path. It decides 
 - **Input data:** metrics, news, filings, and web results fetched on demand.
 - **Core workflow:**
     1. An LLM plans the research focus and search queries.
-    2. Nova retrieves the requested web and filing evidence.
+    2. AlphaDesk retrieves the requested web and filing evidence.
     3. The LLM synthesizes a memo-like signal with confidence and key findings.
 - **Fallback:** neutral if the LLM is unavailable.
 - **Output:** direction, confidence, key findings, web citations, and filing citations.
@@ -248,7 +248,7 @@ Unlike a fixed rules-only agent, it can plan a custom research path. It decides 
 
 ### What this agent is meant to do
 
-The Warren Buffett Analyst is Nova's quality-at-a-reasonable-price lens. Its job is to answer: **would this company look attractive through a Buffett-style investment philosophy?**
+The Warren Buffett Analyst is AlphaDesk's quality-at-a-reasonable-price lens. Its job is to answer: **would this company look attractive through a Buffett-style investment philosophy?**
 
 It emphasizes business quality, financial resilience, durable earnings power, shareholder friendliness, and intrinsic value. This agent is less about short-term trading and more about whether the company resembles a long-term compounder with a margin of safety.
 
@@ -284,7 +284,7 @@ The decision layer converts individual agent views into portfolio-ready outputs.
 
 ### What this agent is meant to do
 
-The Aggregator is Nova's voting and rating engine. Its job is to answer: **after all usable agents have spoken, what is the combined recommendation?**
+The Aggregator is AlphaDesk's voting and rating engine. Its job is to answer: **after all usable agents have spoken, what is the combined recommendation?**
 
 It creates a single consensus from many agent opinions. Importantly, failed or abstained agents are excluded rather than counted as neutral, so the rating is based only on agents that produced usable outputs.
 
@@ -315,7 +315,7 @@ It creates a single consensus from many agent opinions. Importantly, failed or a
 
 ### What this agent is meant to do
 
-The Risk Manager is Nova's position-sizing guardrail. Its job is to answer: **how much exposure is safe for each ticker?**
+The Risk Manager is AlphaDesk's position-sizing guardrail. Its job is to answer: **how much exposure is safe for each ticker?**
 
 It prevents a strong signal from becoming an oversized or overly correlated position. Instead of deciding whether the stock is attractive, it defines the maximum exposure allowed based on volatility and portfolio correlation.
 
@@ -336,7 +336,7 @@ It prevents a strong signal from becoming an oversized or overly correlated posi
 
 ### What this agent is meant to do
 
-The Portfolio Manager is Nova's execution-decision layer. Its job is to answer: **given the consensus and risk limits, what should the portfolio actually do?**
+The Portfolio Manager is AlphaDesk's execution-decision layer. Its job is to answer: **given the consensus and risk limits, what should the portfolio actually do?**
 
 It translates research into buy, sell, hold, quantity, and hedge plans. This is where the research system becomes action-oriented while still respecting the risk manager's constraints.
 
@@ -357,13 +357,13 @@ It translates research into buy, sell, hold, quantity, and hedge plans. This is 
 
 ## Part 3 — Debate engine
 
-The Debate engine is Nova's LLM research pod. It is built for deeper thesis work where evidence quality, recency, counterarguments, and narrative synthesis matter more than a single numeric score.
+The Debate engine is AlphaDesk's LLM research pod. It is built for deeper thesis work where evidence quality, recency, counterarguments, and narrative synthesis matter more than a single numeric score.
 
 ## 14. Supervisor · planner
 
 ### What this agent is meant to do
 
-The Supervisor is Nova's research coordinator. Its job is to answer: **what questions should the research pod investigate, and who should investigate each part?**
+The Supervisor is AlphaDesk's research coordinator. Its job is to answer: **what questions should the research pod investigate, and who should investigate each part?**
 
 It turns the user's investment question into a structured research plan. Instead of every specialist looking at the same thing, the Supervisor splits the problem into focused mandates.
 
@@ -384,7 +384,7 @@ It turns the user's investment question into a structured research plan. Instead
 
 ### What these agents are meant to do
 
-The Specialists are Nova's parallel research analysts. Their job is to answer: **what does the evidence say from each major investment lens?**
+The Specialists are AlphaDesk's parallel research analysts. Their job is to answer: **what does the evidence say from each major investment lens?**
 
 Each specialist owns a specific research angle, gathers evidence, forms a stance, and reports key findings with sources and confidence. Running them in parallel makes the research pod faster and helps avoid one blended, shallow answer.
 
@@ -415,7 +415,7 @@ Each specialist owns a specific research angle, gathers evidence, forms a stance
 
 ### What this agent is meant to do
 
-The Bear Challenger is Nova's adversarial reviewer. Its job is to answer: **what could break the thesis?**
+The Bear Challenger is AlphaDesk's adversarial reviewer. Its job is to answer: **what could break the thesis?**
 
 It actively hunts for disconfirming evidence instead of reinforcing the base case. This is important because investment research is vulnerable to confirmation bias. The Bear Challenger makes sure demand risk, competition, valuation risk, concentration, and other severe risks are surfaced before the final memo.
 
@@ -433,7 +433,7 @@ It actively hunts for disconfirming evidence instead of reinforcing the base cas
 
 ### What this agent is meant to do
 
-The Synthesizer is Nova's final investment memo writer. Its job is to answer: **after considering all evidence and the bear case, what should we believe?**
+The Synthesizer is AlphaDesk's final investment memo writer. Its job is to answer: **after considering all evidence and the bear case, what should we believe?**
 
 It does not simply average all opinions. It judges evidence quality, recency, and whether the bear case has created an unrebutted high-severity risk. The output is a portfolio-manager-style memo that explains conviction, lean, scenarios, risks, and what would change the view.
 
@@ -458,9 +458,9 @@ It does not simply average all opinions. It judges evidence quality, recency, an
 
 ---
 
-## How to read Nova outputs
+## How to read AlphaDesk outputs
 
-When Nova produces a ticker recommendation, read the output in this order:
+When AlphaDesk produces a ticker recommendation, read the output in this order:
 
 **Note:** STARS, consensus, valuation target, and risk cap come from a Signals run. Bear Challenger findings and the Synthesizer memo come from a Debate run. These are complementary modes: you can read either one on its own, or compare both side by side.
 

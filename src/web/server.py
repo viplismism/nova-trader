@@ -1,4 +1,4 @@
-"""Thin browser wrapper around the Nova Trader engine."""
+"""Thin browser wrapper around the AlphaDesk engine."""
 
 from __future__ import annotations
 
@@ -50,14 +50,14 @@ _ACTIVE_DEBATES: dict[str, threading.Event] = {}
 _ACTIVE_DEBATES_LOCK = threading.Lock()
 
 _QA_SYSTEM = (
-    "You are Nova, the assistant inside Nova Trader. Answer from the supplied signal-card context only. "
+    "You are AlphaDesk, the assistant inside AlphaDesk. Answer from the supplied signal-card context only. "
     "Use short, clear paragraphs. If the run does not contain enough evidence, say exactly what is missing. "
     "Do not change the final action, confidence, or risk limits. This is research support, not personal financial advice."
 )
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Nova Trader", version="0.1.0")
+    app = FastAPI(title="AlphaDesk", version="0.1.0")
 
     # Optional shared-password gate (HTTP Basic). Enabled only when NOVA_ACCESS_PASSWORD
     # is set, so local dev stays open. Guards every route except the health probe, so a
@@ -77,7 +77,7 @@ def create_app() -> FastAPI:
             if not ok:
                 return PlainTextResponse(
                     "Authentication required", status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="Nova Trader"'},
+                    headers={"WWW-Authenticate": 'Basic realm="AlphaDesk"'},
                 )
             return await call_next(request)
 
@@ -196,9 +196,9 @@ def create_app() -> FastAPI:
                 detail=f"{key_name} is not configured. Add it to .env or choose a provider with credentials.",
             )
         if run_id.startswith("debate-") and DebateRecorder.exists(run_id):
-            context = "Grounded Nova Trader research-desk memo:\n" + _debate_context_text(run_id)
+            context = "Grounded AlphaDesk research-desk memo:\n" + _debate_context_text(run_id)
         else:
-            context = "Grounded Nova Trader run context:\n" + signal_cards_context_text(_load_recommendation(run_id))
+            context = "Grounded AlphaDesk run context:\n" + signal_cards_context_text(_load_recommendation(run_id))
         events: queue.Queue[dict[str, Any]] = queue.Queue()
         done = threading.Event()
         messages = build_qa_messages(_QA_SYSTEM, question, context)

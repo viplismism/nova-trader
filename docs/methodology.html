@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Nova Trader — Equity Research Methodology (detailed / internal)</title>
+<title>AlphaDesk — Equity Research Methodology (detailed / internal)</title>
 <style>
   :root{
     --ink:#1b2430; --muted:#5b6573; --line:#cfd6df;
@@ -110,10 +110,10 @@
 <div class="sheet">
 
   <header class="top">
-    <div class="brand">NOVA<br>TRADER<small>RESEARCH</small></div>
+    <div class="brand">ALPHA<br>DESK<small>RESEARCH</small></div>
     <div class="titlebox">
       <h1>Equity Research Methodology</h1>
-      <div class="sub">Nova's two analyst engines mapped onto the Standard &amp; Poor's bottom-up framework — what is built, partial, and missing, with the next build to close each gap. Detailed / internal reference for deck prep · figures derived from source code.</div>
+      <div class="sub">AlphaDesk's two analyst engines mapped onto the Standard &amp; Poor's bottom-up framework — what is built, partial, and missing, with the next build to close each gap. Detailed / internal reference for deck prep · figures derived from source code.</div>
     </div>
   </header>
 
@@ -147,7 +147,7 @@
         <div class="sp">Rate &amp; market forecasts, sector top/bottom picks, recommended asset allocation across stocks / bonds / cash.</div>
         <div class="pbar" style="margin-top:8px"><i class="partial" style="width:35%"></i></div>
         <div class="nova">
-          <span class="lbl">NOVA <span class="badge b-partial">PARTIAL</span></span>
+          <span class="lbl">ALPHADESK <span class="badge b-partial">PARTIAL</span></span>
           <div class="kv">
             <span class="k">Data</span><span>Live web search (Tavily / DuckDuckGo)</span>
             <span class="k">Compute</span><span>LLM scan of sector tailwinds/headwinds, competition, regulation, demand</span>
@@ -168,7 +168,7 @@
           <div class="step">Step 1</div><div class="ttl">Review public information</div>
           <div class="sp"><b>S&amp;P:</b> 10-Ks, 10-Qs, annual reports, conference calls.</div>
           <div class="pbar"><i class="built" style="width:80%"></i></div>
-          <div class="nova"><span class="lbl">NOVA <span class="badge b-built">BUILT</span></span>
+          <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-built">BUILT</span></span>
             <div class="kv">
               <span class="k">Data</span><span>SEC EDGAR 10-K/10-Q (live fetch + cache)</span>
               <span class="k">Compute</span><span>HTML strip → ~1.2k-char chunks → Item 1A/1/7 tagging → BM25 retrieval</span>
@@ -185,7 +185,7 @@
           <div class="step">Step 2</div><div class="ttl">Conversations with management</div>
           <div class="sp"><b>S&amp;P:</b> Relationships, calls / in-person meetings with execs &amp; IR.</div>
           <div class="pbar"><i class="gap" style="width:3%"></i></div>
-          <div class="nova"><span class="lbl">NOVA <span class="badge b-gap">GAP · human-only</span></span>
+          <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-gap">GAP · human-only</span></span>
             <div class="sp" style="margin-top:5px">No live IR/management access. <b>Outside the scope of an automated desk</b> — included for completeness.</div>
           </div>
         </div>
@@ -195,7 +195,7 @@
           <div class="step">Step 3</div><div class="ttl">3-year preliminary earnings model</div>
           <div class="sp"><b>S&amp;P:</b> EPS growth, earnings prospects, balance sheet &amp; cash flows.</div>
           <div class="pbar"><i class="partial" style="width:50%"></i></div>
-          <div class="nova"><span class="lbl">NOVA <span class="badge b-partial">PARTIAL</span></span>
+          <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-partial">PARTIAL</span></span>
             <div class="kv">
               <span class="k">Data</span><span>Metrics + line items (≥4 periods)</span>
               <span class="k">Compute</span><span>Growth/margin trend scoring + multi-stage FCF projection (10–15 yr)</span>
@@ -211,7 +211,7 @@
           <div class="step">Step 4</div><div class="ttl">Review assumptions with company</div>
           <div class="sp"><b>S&amp;P:</b> Validate the model against company guidance.</div>
           <div class="pbar"><i class="gap" style="width:3%"></i></div>
-          <div class="nova"><span class="lbl">NOVA <span class="badge b-gap">GAP · human-only</span></span>
+          <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-gap">GAP · human-only</span></span>
             <div class="sp" style="margin-top:5px">Requires management dialogue. Outside automated scope.</div>
           </div>
         </div>
@@ -221,7 +221,7 @@
           <div class="step">Step 5</div><div class="ttl">Assess (Porter's forces)</div>
           <div class="sp"><b>S&amp;P:</b> Management, competition, suppliers, buyers, substitutes, barriers, regulation.</div>
           <div class="pbar"><i class="partial" style="width:40%"></i></div>
-          <div class="nova"><span class="lbl">NOVA <span class="badge b-partial">PARTIAL</span></span>
+          <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-partial">PARTIAL</span></span>
             <div class="kv">
               <span class="k">Data</span><span>Web + filings</span>
               <span class="k">Compute</span><span>Macro specialist (competition/regulation/demand) + Buffett persona (moat &amp; mgmt via capital allocation)</span>
@@ -237,7 +237,7 @@
           <div class="step">Step 6</div><div class="ttl">Finalize earnings model</div>
           <div class="sp"><b>S&amp;P:</b> Earnings quality, governance, S&amp;P <b>Core Earnings</b> normalization.</div>
           <div class="pbar"><i class="partial" style="width:25%"></i></div>
-          <div class="nova"><span class="lbl">NOVA <span class="badge b-partial">PARTIAL</span></span>
+          <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-partial">PARTIAL</span></span>
             <div class="kv">
               <span class="k">Data</span><span>Line items (NI, FCF, capex, dep.)</span>
               <span class="k">Compute</span><span>FCF-conversion (FCF/NI) as quality proxy</span>
@@ -261,7 +261,7 @@
       <div class="step">Step 7</div><div class="ttl">Multiple valuation criteria</div>
       <div class="sp"><b>S&amp;P:</b> Intrinsic (DCF), relative valuation, sum-of-parts, risk premium.</div>
       <div class="pbar"><i class="built" style="width:60%"></i></div>
-      <div class="nova"><span class="lbl">NOVA — strongest quant box <span class="badge b-built">BUILT</span></span>
+      <div class="nova"><span class="lbl">ALPHADESK — strongest quant box <span class="badge b-built">BUILT</span></span>
         <div class="kv">
           <span class="k">Data</span><span>FCF history, metrics, market cap, line items</span>
           <span class="k">Compute</span><span><b>4 intrinsic methods:</b> multi-stage DCF (CAPM-WACC, bear/base/bull weighted), Owner Earnings, EV/EBITDA, Residual Income · <b>Relative:</b> P/E·P/B·P/S thresholds</span>
@@ -277,7 +277,7 @@
       <div class="step">Step 8</div><div class="ttl">Establish intrinsic value</div>
       <div class="sp"><b>S&amp;P:</b> 12-month target price + risk ranking (High/Med/Low vol &amp; capital-loss risk).</div>
       <div class="pbar"><i class="built" style="width:85%"></i></div>
-      <div class="nova"><span class="lbl">NOVA <span class="badge b-built">BUILT</span> <span style="font-weight:600;color:var(--built)">· new</span></span>
+      <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-built">BUILT</span> <span style="font-weight:600;color:var(--built)">· new</span></span>
         <div class="kv">
           <span class="k">Data</span><span>Blended intrinsic value, shares outstanding, price</span>
           <span class="k">Compute</span><span><b>12-mo target = fair value × (1 + cost of equity)</b> (CAPM); annualized vol + correlation → position caps</span>
@@ -293,7 +293,7 @@
       <div class="step">Step 9</div><div class="ttl">Decide recommendation</div>
       <div class="sp"><b>S&amp;P:</b> STARS 1–5 star ranking.</div>
       <div class="pbar"><i class="built" style="width:85%"></i></div>
-      <div class="nova"><span class="lbl">NOVA — direct STARS parity <span class="badge b-built">BUILT</span> <span style="font-weight:600;color:var(--built)">· new</span></span>
+      <div class="nova"><span class="lbl">ALPHADESK — direct STARS parity <span class="badge b-built">BUILT</span> <span style="font-weight:600;color:var(--built)">· new</span></span>
         <div class="kv">
           <span class="k">Data</span><span>All agent signals</span>
           <span class="k">Compute</span><span>Confidence-weighted consensus → <b>1–5 STARS</b> (5 Strong Buy … 1 Strong Sell); debate synthesizer judges (not averages)</span>
@@ -312,7 +312,7 @@
       <div class="step">Step 10</div><div class="ttl">Supervisory / committee review</div>
       <div class="sp"><b>S&amp;P:</b> Senior analyst review for regulatory &amp; compliance.</div>
       <div class="pbar"><i class="partial" style="width:40%"></i></div>
-      <div class="nova"><span class="lbl">NOVA — adversarial review, <i>deeper</i> than S&amp;P's chart shows <span class="badge b-partial">PARTIAL</span></span>
+      <div class="nova"><span class="lbl">ALPHADESK — adversarial review, <i>deeper</i> than S&amp;P's chart shows <span class="badge b-partial">PARTIAL</span></span>
         <div class="kv">
           <span class="k">Compute</span><span><b>Bear challenger</b> hunts disconfirming evidence &amp; refutes → <b>synthesizer</b> judges by evidence quality ("HIGH conviction needs no unrebutted high-severity risk")</span>
           <span class="k">Output</span><span>Refutations, biggest-risk, reconciled memo</span>
@@ -327,7 +327,7 @@
       <div class="step">Step 11</div><div class="ttl">Ongoing analytical review</div>
       <div class="sp"><b>S&amp;P:</b> Repeat steps; continuous committee re-eval; 7–8 updates/yr per name.</div>
       <div class="pbar"><i class="gap" style="width:10%"></i></div>
-      <div class="nova"><span class="lbl">NOVA <span class="badge b-gap">GAP</span></span>
+      <div class="nova"><span class="lbl">ALPHADESK <span class="badge b-gap">GAP</span></span>
         <div class="kv">
           <span class="k">Have</span><span>Every run persists a full trajectory (events + per-call JSONL) for replay/training</span>
           <span class="k">Missing</span><span>No re-coverage scheduler, no material-event monitoring, no update cadence</span>
@@ -341,7 +341,7 @@
   <div class="scorewrap">
     <h2>Coverage scorecard</h2>
     <table>
-      <thead><tr><th>S&amp;P step</th><th>Nova engine / agent</th><th class="c">Coverage</th><th>Next build to close the gap</th></tr></thead>
+      <thead><tr><th>S&amp;P step</th><th>AlphaDesk engine / agent</th><th class="c">Coverage</th><th>Next build to close the gap</th></tr></thead>
       <tbody>
         <tr><td>Macro &amp; economic</td><td>Debate · macro</td><td class="c"><span class="mini"><i class="partial" style="width:35%;background:var(--partial)"></i></span> 35%</td><td>Rates/sector feed + house-view layer</td></tr>
         <tr><td>1 · Review public info</td><td>Signals · sec_filings + Debate RAG</td><td class="c"><span class="mini"><i style="width:80%;background:var(--built)"></i></span> 80%</td><td>Earnings-call transcripts</td></tr>
@@ -360,7 +360,7 @@
   </div>
 
   <div class="foot">
-    <b>Read this way.</b> Nova has built the bottom-up analytical spine of equity research: it ingests SEC filings (Step&nbsp;1), runs a multi-method intrinsic valuation (Step&nbsp;7), now sets an explicit 12-month price target (Step&nbsp;8) and issues a 1–5 STARS recommendation (Step&nbsp;9) — then stress-tests that call through an adversarial bear-versus-synthesizer debate (Step&nbsp;10) that goes deeper than S&amp;P's static chart even depicts. The remaining gaps are the human-relationship steps — calling and validating forecasts with management (Steps&nbsp;2 and&nbsp;4) — together with S&amp;P Core-Earnings normalization (Step&nbsp;6), peer relative valuation and sum-of-parts (Step&nbsp;7), and scheduled ongoing re-coverage (Step&nbsp;11). Under the hood, two engines split the work: <b>Signals</b> is a deterministic, reproducible quant layer, while <b>Debate</b> is an LLM research pod that argues from cited evidence.
+    <b>Read this way.</b> AlphaDesk has built the bottom-up analytical spine of equity research: it ingests SEC filings (Step&nbsp;1), runs a multi-method intrinsic valuation (Step&nbsp;7), now sets an explicit 12-month price target (Step&nbsp;8) and issues a 1–5 STARS recommendation (Step&nbsp;9) — then stress-tests that call through an adversarial bear-versus-synthesizer debate (Step&nbsp;10) that goes deeper than S&amp;P's static chart even depicts. The remaining gaps are the human-relationship steps — calling and validating forecasts with management (Steps&nbsp;2 and&nbsp;4) — together with S&amp;P Core-Earnings normalization (Step&nbsp;6), peer relative valuation and sum-of-parts (Step&nbsp;7), and scheduled ongoing re-coverage (Step&nbsp;11). Under the hood, two engines split the work: <b>Signals</b> is a deterministic, reproducible quant layer, while <b>Debate</b> is an LLM research pod that argues from cited evidence.
   </div>
 
 </div>
