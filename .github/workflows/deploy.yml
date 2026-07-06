@@ -74,7 +74,9 @@ jobs:
           az containerapp secret set -n "$APP" -g nova-demo-rg \
             --secrets anthropic-key="$ANTHROPIC_API_KEY" access-password="$NOVA_ACCESS_PASSWORD" -o none
           ENVVARS="ANTHROPIC_API_KEY=secretref:anthropic-key NOVA_ACCESS_PASSWORD=secretref:access-password"
-          [ -n "$RUNS_DIR" ] && ENVVARS="$ENVVARS NOVA_RUNS_DIR=$RUNS_DIR"
+          # Runs dir + the social-sentiment cache both live on the persistent volume,
+          # so Bright Data pending-snapshot resume survives scale-to-zero restarts.
+          [ -n "$RUNS_DIR" ] && ENVVARS="$ENVVARS NOVA_RUNS_DIR=$RUNS_DIR NOVA_SOCIAL_CACHE_DIR=$RUNS_DIR/social-cache"
           # Social-sentiment creds are optional — only wire them in once set as GitHub secrets.
           if [ -n "$REDDIT_CLIENT_ID" ] && [ -n "$REDDIT_CLIENT_SECRET" ]; then
             az containerapp secret set -n "$APP" -g nova-demo-rg \
