@@ -105,10 +105,13 @@ class WebResearchView(BaseModel):
 
 
 class RedditView(BaseModel):
-    """For the Reddit / retail-sentiment analyst."""
+    """For the social sentiment analyst (Reddit + community feed)."""
 
     ticker: str
     posts: list[RedditPost]
+    # moomoo community-feed post texts — plain strings so schemas stay
+    # independent of the tools layer (the fetcher does the flattening).
+    community_texts: list[str] = Field(default_factory=list)
 
     model_config = {"arbitrary_types_allowed": True}
 

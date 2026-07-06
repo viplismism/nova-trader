@@ -24,6 +24,9 @@ requests = "^2.31.0"
 # Models & validation
 pydantic = "^2.4.2"
 
+# Social sentiment (VADER lexicon scoring)
+vaderSentiment = "^3.3"
+
 # Agent templates
 jinja2 = "^3.1.0"
 pyyaml = "^6.0"

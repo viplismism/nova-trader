@@ -93,6 +93,7 @@ def _build_reddit_view(snapshot: MarketSnapshot, ticker: str) -> "RedditView":
     return RedditView(
         ticker=ticker,
         posts=snapshot.reddit.get(ticker, []),
+        community_texts=snapshot.community.get(ticker, []),
     )
 
 

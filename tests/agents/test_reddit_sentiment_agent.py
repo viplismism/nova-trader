@@ -1,4 +1,4 @@
-"""Reddit / retail-sentiment agent — deterministic keyword + buzz scoring."""
+"""Social sentiment agent — VADER finance-lexicon scoring over Reddit + community feed."""
 
 from datetime import date
 
@@ -54,3 +54,23 @@ def test_upvotes_weight_the_read():
     ]
     sig = run_reddit_sentiment_agent(_ctx(), RedditView(ticker="AAPL", posts=posts))
     assert sig.direction == "bullish"
+
+
+def test_community_only_still_signals():
+    # no Reddit posts, but the moomoo community feed alone can drive the read
+    view = RedditView(ticker="AAPL", posts=[],
+                      community_texts=["AAPL to the moon, loading calls", "bullish breakout coming"])
+    sig = run_reddit_sentiment_agent(_ctx(), view)
+    assert sig.status == "ok"
+    assert sig.direction == "bullish"
+    assert "community_posts=2" in sig.key_factors
+
+
+def test_community_counts_into_combined_read():
+    # bearish community chatter should temper a mildly bullish reddit read
+    posts = [_post("AAPL calls", score=0)]
+    view = RedditView(ticker="AAPL", posts=posts,
+                      community_texts=["dump this bagholder trap, puts", "rug pull incoming, sell"])
+    sig = run_reddit_sentiment_agent(_ctx(), view)
+    assert sig.status == "ok"
+    assert sig.direction in ("bearish", "neutral")  # community pulled it down from bullish

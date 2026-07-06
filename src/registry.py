@@ -93,7 +93,7 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
     ),
     "reddit_sentiment": AgentSpec(
         agent_id="reddit_sentiment",
-        display_name="Reddit Sentiment Analyst",
+        display_name="Social Sentiment Analyst",
         view_class=RedditView,
         runner=run_reddit_sentiment_agent,
     ),

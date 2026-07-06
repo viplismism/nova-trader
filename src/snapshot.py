@@ -18,6 +18,7 @@ from src.tools.api import (
     get_prices,
     search_line_items,
 )
+from src.tools.community import get_community_posts
 from src.tools.reddit import get_reddit_posts
 from src.tools.sec_filings import get_sec_filing_excerpts
 from src.tools.web_search import get_web_research
@@ -170,7 +171,14 @@ def _build_snapshot_body(ctx: RunContext, snapshot: MarketSnapshot, api_key: str
             except Exception as e:
                 logger.warning("snapshot reddit failed for %s: %s", ticker, e)
                 snapshot.reddit[ticker] = []
+            progress.update_status("snapshot", ticker, "Reading community feed")
+            try:
+                snapshot.community[ticker] = [p.text for p in get_community_posts(ticker) or []]
+            except Exception as e:
+                logger.warning("snapshot community feed failed for %s: %s", ticker, e)
+                snapshot.community[ticker] = []
         else:
             snapshot.reddit[ticker] = []
+            snapshot.community[ticker] = []
 
         progress.update_status("snapshot", ticker, "Done")

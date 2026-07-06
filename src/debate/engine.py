@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from anthropic import AsyncAnthropic
 
 from src.debate.filings_rag import FilingStore
+from src.debate.market_context import build_market_context
 
 
 # Supervisor / bear / synthesizer run on the reasoning model; the 4 parallel
@@ -391,7 +392,7 @@ async def make_plan(client: AsyncAnthropic, ticker: str, question: str, horizon:
 async def run_specialist(
     client, key: str, mandate: str, plan: Plan, ticker, question, horizon, source: str, store,
     emit=_noop, record=_noop, spec_model: str = SPECIALIST_MODEL, effort: str | None = "medium",
-    cancel=None, thinking: bool = True,
+    cancel=None, thinking: bool = True, market_ctx: str = "",
 ) -> SpecialistDraft:
     """Resilient wrapper: a single specialist failing (refusal, parse error, API error)
     must NOT raise — otherwise it aborts run_debate and orphans the other parallel tasks.
@@ -400,6 +401,7 @@ async def run_specialist(
         return await _run_specialist_inner(
             client, key, mandate, plan, ticker, question, horizon, source, store,
             emit=emit, record=record, spec_model=spec_model, effort=effort, cancel=cancel, thinking=thinking,
+            market_ctx=market_ctx,
         )
     except DebateCancelled:
         raise
@@ -412,7 +414,7 @@ async def run_specialist(
 async def _run_specialist_inner(
     client, key: str, mandate: str, plan: Plan, ticker, question, horizon, source: str, store,
     emit=_noop, record=_noop, spec_model: str = SPECIALIST_MODEL, effort: str | None = "medium",
-    cancel=None, thinking: bool = True,
+    cancel=None, thinking: bool = True, market_ctx: str = "",
 ) -> SpecialistDraft:
     focus = getattr(plan.focus_areas, key)
     _check_cancel(cancel)
@@ -432,6 +434,9 @@ async def _run_specialist_inner(
             "Each finding must quote/derive its evidence from a returned passage and use that passage's "
             "bracketed chunk ID (e.g. NVDA-10K-0042) as its source."
         )
+        if market_ctx:
+            research_user += (f"\n\nLive market context (from market data feed): {market_ctx}\n"
+                              "Use these current figures where relevant; cite them as 'market data'.")
         findings_text = await agent_with_tool(
             client, research_role, research_user, spec_model,
             [SEARCH_FILINGS_TOOL], make_filings_executor(store, emit, key),
@@ -452,6 +457,9 @@ async def _run_specialist_inner(
             "Research this now with web_search. Produce 3-5 sharp, sourced findings from YOUR angle only, "
             "each with concrete evidence (numbers) and a source URL. State your overall stance."
         )
+        if market_ctx:
+            research_user += (f"\n\nLive market context (from market data feed): {market_ctx}\n"
+                              "Use these current figures where relevant; cite them as 'market data'.")
         findings_text = await web_research(client, research_role, research_user, spec_model,
                                            emit=emit, record=record, phase=key, effort=effort,
                                            cancel=cancel, thinking=thinking)
@@ -475,7 +483,7 @@ async def _run_specialist_inner(
 
 async def run_bear(client, drafts: list[SpecialistDraft], ticker, question, horizon,
                    emit=_noop, record=_noop, cancel=None, bear_model: str = REASONING_MODEL,
-                   bear_web: bool = True) -> BearCase:
+                   bear_web: bool = True, market_ctx: str = "") -> BearCase:
     dossier = json.dumps([d.model_dump() for d in drafts], indent=2)
     if bear_web:
         # 1) adversarial research with live web search (the slow but thorough path)
@@ -489,6 +497,10 @@ async def run_bear(client, drafts: list[SpecialistDraft], ticker, question, hori
             f"{dossier}\n\nActively look for contradicting evidence now. Find at least 2 SPECIFIC "
             "disconfirming data points (with sources), or state none could be found and why."
         )
+        if market_ctx:
+            research_user += (f"\n\nLive market context (from market data feed): {market_ctx}\n"
+                              "Use these live figures to probe valuation risk and what's already priced in; "
+                              "cite them as 'market data'.")
         bear_text = await web_research(client, research_role, research_user, bear_model,
                                        max_rounds=4, emit=emit, record=record, phase="bear", cancel=cancel)
     else:
@@ -511,7 +523,8 @@ async def run_bear(client, drafts: list[SpecialistDraft], ticker, question, hori
     return await structure(client, bear_model, BearCase, struct_role, struct_user, record=record, phase="bear")
 
 
-async def run_synth(client, drafts: list[SpecialistDraft], bear: BearCase, ticker, question, horizon, record=_noop) -> Memo:
+async def run_synth(client, drafts: list[SpecialistDraft], bear: BearCase, ticker, question, horizon, record=_noop,
+                    market_ctx: str = "") -> Memo:
     dossier = json.dumps([d.model_dump() for d in drafts], indent=2)
     bear_json = json.dumps(bear.model_dump(), indent=2)
     role = (
@@ -526,6 +539,8 @@ async def run_synth(client, drafts: list[SpecialistDraft], bear: BearCase, ticke
         "Return the memo: conviction, directional_lean, bull_case, bear_case, base_case, key_risks, "
         "what_would_change_my_mind, and the aggregated citations actually used."
     )
+    if market_ctx:
+        user += f"\n\nLive market context (from market data feed): {market_ctx}"
     return await structure(client, REASONING_MODEL, Memo, role, user, record=record, phase="synthesize")
 
 
@@ -577,6 +592,17 @@ async def run_debate(ticker: str, question: str, horizon: str, specialist_source
     spec_thinking = not fast                   # Haiku rejects adaptive thinking
     bear_m = bear_model or REASONING_MODEL     # quick tier runs the bear on Sonnet
 
+    # Optional live market context (prices/cap from Nova's data stack) — best-effort,
+    # never blocks the run: any failure just means the agents debate without it.
+    try:
+        market_ctx = await asyncio.to_thread(build_market_context, ticker)
+    except Exception:
+        market_ctx = ""
+    if market_ctx:
+        emit(type="phase", phase="market", status="done", detail="live market data attached")
+    else:
+        emit(type="phase", phase="market", status="warn", detail="live market data unavailable")
+
     if specialist_source == "filings":
         t = time.perf_counter()
         print(f"[index]      fetching & indexing {ticker} 10-K / 10-Q from SEC EDGAR ...", flush=True)
@@ -608,7 +634,8 @@ async def run_debate(ticker: str, question: str, horizon: str, specialist_source
     tasks = [
         asyncio.create_task(
             run_specialist(client, key, mandate, plan, ticker, question, horizon, specialist_source, store,
-                           emit, record, spec_model=spec_model, effort=spec_effort, cancel=cancel, thinking=spec_thinking)
+                           emit, record, spec_model=spec_model, effort=spec_effort, cancel=cancel, thinking=spec_thinking,
+                           market_ctx=market_ctx)
         )
         for key, mandate in SPECIALISTS
     ]
@@ -632,7 +659,7 @@ async def run_debate(ticker: str, question: str, horizon: str, specialist_source
     try:
         bear = await asyncio.wait_for(
             run_bear(client, drafts, ticker, question, horizon, emit=emit, record=record, cancel=cancel,
-                     bear_model=bear_m, bear_web=bear_web),
+                     bear_model=bear_m, bear_web=bear_web, market_ctx=market_ctx),
             timeout=BEAR_TIMEOUT_S,
         )
         emit(type="phase", phase="debate", status="done", bear=bear.model_dump())
@@ -654,7 +681,7 @@ async def run_debate(ticker: str, question: str, horizon: str, specialist_source
     emit(type="phase", phase="synthesize", status="start", detail="PM reconciling into a cited memo")
     try:
         memo = await asyncio.wait_for(
-            run_synth(client, drafts, bear, ticker, question, horizon, record=record),
+            run_synth(client, drafts, bear, ticker, question, horizon, record=record, market_ctx=market_ctx),
             timeout=SYNTH_TIMEOUT_S,
         )
     except DebateCancelled:

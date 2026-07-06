@@ -63,6 +63,7 @@ jobs:
           NOVA_ACCESS_PASSWORD: ${{ secrets.NOVA_ACCESS_PASSWORD }}
           REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
         run: |
           az config set extension.use_dynamic_install=yes_without_prompt
           # Build the image in the cloud and create/update the app (preserves volumes/env).
@@ -74,11 +75,16 @@ jobs:
             --secrets anthropic-key="$ANTHROPIC_API_KEY" access-password="$NOVA_ACCESS_PASSWORD" -o none
           ENVVARS="ANTHROPIC_API_KEY=secretref:anthropic-key NOVA_ACCESS_PASSWORD=secretref:access-password"
           [ -n "$RUNS_DIR" ] && ENVVARS="$ENVVARS NOVA_RUNS_DIR=$RUNS_DIR"
-          # Reddit creds are optional — only wire them in once they're set as GitHub secrets.
+          # Social-sentiment creds are optional — only wire them in once set as GitHub secrets.
           if [ -n "$REDDIT_CLIENT_ID" ] && [ -n "$REDDIT_CLIENT_SECRET" ]; then
             az containerapp secret set -n "$APP" -g nova-demo-rg \
               --secrets reddit-client-id="$REDDIT_CLIENT_ID" reddit-client-secret="$REDDIT_CLIENT_SECRET" -o none
             ENVVARS="$ENVVARS REDDIT_CLIENT_ID=secretref:reddit-client-id REDDIT_CLIENT_SECRET=secretref:reddit-client-secret"
+          fi
+          if [ -n "$BRIGHTDATA_API_KEY" ]; then
+            az containerapp secret set -n "$APP" -g nova-demo-rg \
+              --secrets brightdata-key="$BRIGHTDATA_API_KEY" -o none
+            ENVVARS="$ENVVARS BRIGHTDATA_API_KEY=secretref:brightdata-key"
           fi
           az containerapp update -n "$APP" -g nova-demo-rg \
             --set-env-vars $ENVVARS --min-replicas 0 --max-replicas 1 -o none

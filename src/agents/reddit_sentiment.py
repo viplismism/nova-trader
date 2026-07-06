@@ -1,22 +1,22 @@
-"""Reddit / retail-sentiment analyst.
+"""Social sentiment analyst — the retail-crowd lens (Reddit + community feed).
 
-Reads recent posts (and their top comments) about the ticker from the investing
-subreddits and turns them into a directional signal. Two ingredients:
-  - sentiment: bullish-vs-bearish term balance, weighted by each post's upvotes
-    (a heavily-upvoted post reflects more of the crowd than a 1-vote one)
-  - buzz:      how much the ticker is being talked about (mention count) — a spike
-    is itself informative, and it scales confidence
+Reads recent Reddit posts (and their top comments) about the ticker plus the
+moomoo community feed, and turns them into a directional signal:
+  - sentiment: VADER with a finance-tuned lexicon ("moon", "bagholder", "puts"...)
+    — plain VADER scores WSB slang as neutral, the overlay is what makes it work
+  - weighting: each Reddit post weighted by engagement (1 + upvotes + comments),
+    so a 5,000-upvote post speaks for more of the crowd than a 1-vote one
+  - buzz: mention volume scales confidence — a spike in chatter is itself signal
 
-Deterministic and keyword-based, mirroring news_sentiment. An LLM upgrade can be
-layered on later. Cites the top threads as evidence.
+Deterministic (no LLM call). Cites the top Reddit threads as evidence.
 """
 
 from __future__ import annotations
 
 import logging
-import math
 
-from src.agents._text import clip as _clip, term_count as _term_count
+from src.agents._sentiment import engagement_weight, is_scoreable, mood, score_text, weighted_sentiment
+from src.agents._text import clip as _clip
 from src.schemas.context import RunContext
 from src.schemas.signals import Signal, WebSourceCitation
 from src.schemas.views import RedditView
@@ -26,41 +26,25 @@ logger = logging.getLogger(__name__)
 
 AGENT_ID = "reddit_sentiment"
 
-# Retail vocabulary — includes WSB slang, which carries real directional meaning there.
-_BULLISH = {
-    "buy", "bull", "bullish", "long", "calls", "call", "moon", "rocket", "squeeze",
-    "breakout", "rip", "ripping", "tendies", "yolo", "undervalued", "oversold",
-    "beat", "beats", "upgrade", "strong", "growth", "rally", "pump", "green",
-    "hold", "holding", "diamond", "bagstrong", "accumulate", "support",
-}
-_BEARISH = {
-    "sell", "bear", "bearish", "short", "puts", "put", "dump", "dumping", "crash",
-    "overvalued", "overbought", "miss", "misses", "downgrade", "weak", "drop",
-    "tank", "tanking", "red", "bagholder", "bagholding", "rugpull", "fraud",
-    "lawsuit", "bankrupt", "dilution", "resistance", "topped", "dead",
-}
-
 
 def run_reddit_sentiment_agent(ctx: RunContext, view: RedditView, recorder=None) -> Signal:  # noqa: ARG001
-    if not view.posts:
+    if not view.posts and not view.community_texts:
         return Signal.abstained(
             agent_id=AGENT_ID, ticker=view.ticker,
-            reason="No Reddit posts found (no credentials, or no recent mentions)",
+            reason="No social posts found (no credentials, or no recent mentions)",
         )
 
-    progress.update_status(AGENT_ID, view.ticker, f"Reading {len(view.posts)} Reddit posts")
+    n_reddit, n_community = len(view.posts), len(view.community_texts)
+    progress.update_status(AGENT_ID, view.ticker, f"Reading {n_reddit} Reddit + {n_community} community posts")
     try:
-        bull = 0.0
-        bear = 0.0
-        total_score = 0
+        pairs: list[tuple[float, float]] = []
+        total_upvotes = 0
         sources: list[WebSourceCitation] = []
+
         for post in view.posts:
             text = " ".join([post.title, post.body, *post.top_comments])
-            # upvote weight: a post with more net upvotes speaks for more of the crowd.
-            weight = 1.0 + math.log1p(max(post.score, 0))
-            bull += _term_count(text, _BULLISH) * weight
-            bear += _term_count(text, _BEARISH) * weight
-            total_score += max(post.score, 0)
+            pairs.append((score_text(text), engagement_weight(post.score, post.num_comments)))
+            total_upvotes += max(post.score, 0)
             if post.permalink:
                 sources.append(WebSourceCitation(
                     title=f"[r/{post.subreddit}] {post.title}"[:140],
@@ -68,31 +52,43 @@ def run_reddit_sentiment_agent(ctx: RunContext, view: RedditView, recorder=None)
                     snippet=_clip(post.body or (post.top_comments[0] if post.top_comments else ""), 300),
                 ))
 
-        total_terms = max(bull + bear, 1.0)
-        score = (bull - bear) / total_terms        # [-1, 1] sentiment lean
-        mentions = len(view.posts)
+        # Community-feed posts carry no engagement metadata — each counts once.
+        # Non-English posts are skipped: VADER reads them as 0.0, which would
+        # silently drag the weighted mean toward a false neutral.
+        n_scoreable = 0
+        for text in view.community_texts:
+            if is_scoreable(text):
+                pairs.append((score_text(text), 1.0))
+                n_scoreable += 1
 
-        if score >= 0.15:
-            direction = "bullish"
-        elif score <= -0.15:
-            direction = "bearish"
-        else:
-            direction = "neutral"
+        if not pairs:
+            return Signal.abstained(
+                agent_id=AGENT_ID, ticker=view.ticker,
+                reason=f"{n_community} community posts found but none scoreable (non-English)",
+            )
 
-        # Confidence: sentiment strength, nudged up by buzz volume (more mentions =
-        # more conviction in the read), capped so a keyword scan never claims certainty.
-        buzz_boost = min(mentions, 20) * 0.015
-        confidence = min(0.85, 0.45 + abs(score) * 0.40 + buzz_boost)
+        combined = weighted_sentiment(pairs)
+        label = mood(combined)
+        direction = label if label in ("bullish", "bearish") else "neutral"
+        net = combined or 0.0
 
+        # Confidence: sentiment strength, nudged up by buzz volume, capped well
+        # below certainty — this is a crowd read, not a valuation.
+        mentions = n_reddit + n_community
+        confidence = min(0.85, 0.45 + abs(net) * 0.40 + min(mentions, 20) * 0.015)
+
+        parts = [f"{n_reddit} Reddit posts ({total_upvotes:,} combined upvotes)"]
+        if n_community:
+            parts.append(f"{n_community} community-feed posts")
         reasoning = (
-            f"Across {mentions} Reddit posts ({total_score:,} combined upvotes) the "
-            f"upvote-weighted term balance was {bull:.0f} bullish vs {bear:.0f} bearish "
-            f"(net {score:+.0%}), so the retail read leans {direction}."
+            f"Across {' and '.join(parts)}, the engagement-weighted finance-lexicon "
+            f"sentiment is {net:+.2f}, so the retail read leans {label}."
         )
         key_factors = [
-            f"mentions={mentions}",
-            f"combined_upvotes={total_score}",
-            f"net_sentiment={score:+.0%}",
+            f"reddit_mentions={n_reddit}",
+            f"community_posts={n_community}",
+            f"combined_upvotes={total_upvotes}",
+            f"weighted_sentiment={net:+.2f}",
         ]
         progress.update_status(AGENT_ID, view.ticker, "Done")
         return Signal(
@@ -105,5 +101,5 @@ def run_reddit_sentiment_agent(ctx: RunContext, view: RedditView, recorder=None)
             web_sources=sources[:8],
         )
     except Exception as exc:
-        logger.exception("reddit sentiment agent failed for %s", view.ticker)
+        logger.exception("social sentiment agent failed for %s", view.ticker)
         return Signal.failed(agent_id=AGENT_ID, ticker=view.ticker, error=str(exc))
