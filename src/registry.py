@@ -21,6 +21,7 @@ from src.schemas.views import (
     NewsSentimentView,
     PersonaView,
     PriceView,
+    RedditView,
     WebResearchView,
 )
 from src.agents.adaptive_research import run_adaptive_research_agent
@@ -28,6 +29,7 @@ from src.agents.fundamentals import run_fundamentals_agent
 from src.agents.growth import run_growth_agent
 from src.agents.insider_sentiment import run_insider_sentiment_agent
 from src.agents.news_sentiment import run_news_sentiment_agent
+from src.agents.reddit_sentiment import run_reddit_sentiment_agent
 from src.agents.sec_filings import run_sec_filings_agent
 from src.agents.technical import run_technical_agent
 from src.agents.valuation import run_valuation_agent
@@ -88,6 +90,12 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
         display_name="Web Research Analyst",
         view_class=WebResearchView,
         runner=run_web_research_agent,
+    ),
+    "reddit_sentiment": AgentSpec(
+        agent_id="reddit_sentiment",
+        display_name="Reddit Sentiment Analyst",
+        view_class=RedditView,
+        runner=run_reddit_sentiment_agent,
     ),
     "sec_filings": AgentSpec(
         agent_id="sec_filings",
