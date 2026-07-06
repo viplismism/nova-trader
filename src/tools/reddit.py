@@ -173,11 +173,14 @@ def _pending_path(ticker: str) -> Path:
 
 
 def _load_pending_snapshot(ticker: str) -> str | None:
-    """Snapshot id from a previous run still worth harvesting (< 30 min old)."""
+    """Snapshot id from a previous run still worth harvesting (< 24 h old).
+
+    Measured live: Bright Data Reddit discovery takes ~60 minutes to build, and a
+    finished snapshot stays downloadable — so keep resuming for a full day."""
     path = _pending_path(ticker)
     try:
         data = json.loads(path.read_text())
-        if time.time() - float(data.get("ts", 0)) < 1800:
+        if time.time() - float(data.get("ts", 0)) < 86400:
             return str(data["snapshot_id"])
         path.unlink(missing_ok=True)  # too old — a fresh trigger is better
     except FileNotFoundError:
@@ -304,6 +307,13 @@ def _cache_read(ticker: str) -> list[RedditPost]:
 # --- Public entry point ------------------------------------------------------
 
 
+def _cache_age_seconds(ticker: str) -> float:
+    try:
+        return time.time() - _cache_path(ticker).stat().st_mtime
+    except OSError:
+        return float("inf")
+
+
 def get_reddit_posts(ticker: str, *, per_subreddit: int = 5, with_comments: bool = True) -> list[RedditPost]:
     """Fetch recent Reddit posts mentioning the ticker (official API -> Bright Data -> cache)."""
     progress.record_fetch(current_fetch_owner.get(), "reddit")
@@ -313,6 +323,15 @@ def get_reddit_posts(ticker: str, *, per_subreddit: int = 5, with_comments: bool
     if posts:
         _cache_write(ticker, posts)
         return posts
+
+    # A fresh harvest short-circuits Bright Data: their discovery jobs take ~1h
+    # and bill per trigger, so re-triggering while the last result is still
+    # recent just burns quota for near-identical posts.
+    max_age = float(os.getenv("NOVA_SOCIAL_CACHE_MAX_AGE", str(6 * 3600)))
+    if _cache_age_seconds(ticker) < max_age:
+        cached = _cache_read(ticker)
+        if cached:
+            return cached
 
     posts = _fetch_brightdata(ticker, num_of_posts=per_subreddit * len(_SUBREDDITS))
     if posts:
