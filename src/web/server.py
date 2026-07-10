@@ -192,7 +192,10 @@ def create_app() -> FastAPI:
     ) -> StreamingResponse:
         run_id = _validate_run_id(run_id)
         provider = provider or _default_provider()
-        model = model or _default_model()
+        # Grounded follow-up Q&A over a ~2k-token context is a fast-model job —
+        # answering with the deep analysis model (plus its thinking phase) made
+        # every chat reply take tens of seconds for no quality gain.
+        model = model or _default_chat_model()
         if not provider_has_credentials(provider):
             key_name = required_api_key_name(provider) or "provider credentials"
             raise HTTPException(
@@ -416,6 +419,10 @@ def _default_provider() -> str:
 
 def _default_model() -> str:
     return os.getenv("NOVA_MODEL_NAME", "claude-opus-4-8")
+
+
+def _default_chat_model() -> str:
+    return os.getenv("NOVA_CHAT_MODEL", "claude-haiku-4-5")
 
 
 def _portfolio_mode(value: str) -> str:

@@ -779,7 +779,9 @@
       pushChat(mode,{role:"user",text:q});
       const bubble=pushChat(mode,{role:"nova",who:"AlphaDesk",text:"…"});
       let answer="";
-      const p=new URLSearchParams({run_id:runId,question:q,provider:$("provider").value,model:$("model").value});
+      // No model param: chat Q&A runs on the server's fast chat model, not the
+      // heavyweight analysis model — grounded follow-ups should answer in seconds.
+      const p=new URLSearchParams({run_id:runId,question:q,provider:$("provider").value});
       const src=new EventSource(`/api/ask?${p}`); state.askSource=src;
       src.addEventListener("token",ev=>{ answer+=JSON.parse(ev.data).text||""; bubble.text=answer; if(mode===state.mode) renderChat(); });
       src.addEventListener("done",()=>src.close());

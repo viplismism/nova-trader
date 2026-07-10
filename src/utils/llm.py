@@ -758,15 +758,18 @@ def _stream_chat_once(
         api_key = _api_key(api_keys, "ANTHROPIC_API_KEY")
         system, convo = _split_anthropic_messages(messages)
         client = anthropic.Anthropic(api_key=api_key)
+        chat_model = model or _ANTHROPIC_DEFAULT_MODEL
         stream_kwargs: dict[str, Any] = {
-            "model": model or _ANTHROPIC_DEFAULT_MODEL,
+            "model": chat_model,
             "max_tokens": 16000,
             "messages": convo,
-            # Adaptive thinking with summarized display so the chat surface can
-            # stream Claude's reasoning into its own channel. No temperature —
-            # sampling params 400 on Opus 4.8.
-            "thinking": {"type": "adaptive", "display": "summarized"},
         }
+        # Adaptive thinking with summarized display so the chat surface can
+        # stream Claude's reasoning into its own channel. Haiku rejects the
+        # thinking param (and grounded Q&A doesn't need it). No temperature —
+        # sampling params 400 on Opus 4.8.
+        if "haiku" not in chat_model:
+            stream_kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
         if system:
             stream_kwargs["system"] = system
         with client.messages.stream(**stream_kwargs) as stream:
