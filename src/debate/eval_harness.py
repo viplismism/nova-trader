@@ -107,3 +107,20 @@ async def evaluate_findings(
         "hallucinated_sources": hallucinated,
         "method": "llm-judge" if judge_client is not None else f"lexical>={threshold}",
     }
+
+
+async def audit_debate_result(result: dict, store: Any) -> dict | None:
+    """Audit a finished debate's specialist findings against its filing store.
+
+    Runs at debate completion (the store only lives in memory during the run)
+    so the audit can be persisted with the trajectory — the research trail
+    anyone can later check in the inspector. Returns None when there is
+    nothing auditable (web-sourced debates cite URLs, not filing chunks).
+    """
+    findings = [
+        f for d in (result or {}).get("specialist_drafts", [])
+        for f in (d.get("key_findings") or [])
+    ]
+    if not findings or store is None:
+        return None
+    return await evaluate_findings(findings, store)

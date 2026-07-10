@@ -99,3 +99,23 @@ def test_judge_path_uses_stub_client_not_network():
     m = asyncio.run(evaluate_findings([_FINDINGS[1]], _STORE, judge_client=_StubClient()))
     assert m["supported"] == 1  # judge overrides the lexical miss
     assert m["method"] == "llm-judge"
+
+
+def test_audit_debate_result_flattens_drafts():
+    from src.debate.eval_harness import audit_debate_result
+
+    result = {"specialist_drafts": [
+        {"agent": "fundamental", "key_findings": [_FINDINGS[0]]},
+        {"agent": "valuation", "key_findings": [_FINDINGS[1]]},
+    ]}
+    m = asyncio.run(audit_debate_result(result, _STORE))
+    assert m["total_findings"] == 2
+    assert m["grounded"] == 2
+    assert m["supported"] == 1
+
+
+def test_audit_debate_result_none_when_nothing_auditable():
+    from src.debate.eval_harness import audit_debate_result
+
+    assert asyncio.run(audit_debate_result({"specialist_drafts": []}, _STORE)) is None
+    assert asyncio.run(audit_debate_result({"specialist_drafts": [{"key_findings": [_FINDINGS[0]]}]}, None)) is None

@@ -7,6 +7,7 @@ import base64
 import contextlib
 import io
 import json
+import logging
 import os
 import queue
 import re
@@ -24,6 +25,7 @@ from src.chat.models import DEFAULT_AGENTS, ChatSettings
 from src.chat.rendering import recommendation_verdict_text
 from src.chat.signal_card import build_qa_messages, build_signal_cards, signal_cards_context_text
 from src.debate import USAGE as DEBATE_USAGE, run_debate
+from src.debate.eval_harness import audit_debate_result
 from src.debate.engine import DebateCancelled
 from src.debate.local_fallback import run_local_debate_fallback
 from src.debate.recorder import DebateRecorder
@@ -36,6 +38,8 @@ from src.utils.progress import progress
 # override=True so the project's .env is authoritative for the demo — otherwise a
 # stale ANTHROPIC_API_KEY (or other key) exported in the shell silently shadows it.
 load_dotenv(override=True)
+
+logger = logging.getLogger(__name__)
 
 
 _RUN_CACHE: dict[str, Recommendation] = {}
@@ -281,6 +285,18 @@ def create_app() -> FastAPI:
                         result, _store = await run_debate(symbol, question, horizon, source,
                                                           emit=emit, record=recorder.record, cancel=cancel,
                                                           fast=fast, bear_model=bear_model, bear_web=bear_web)
+                    # Citation audit while the filing store is still in memory — the
+                    # persisted verdict ("are the citations real and do they support the
+                    # claims?") is what makes the research trail checkable later.
+                    try:
+                        audit = await audit_debate_result(result, _store)
+                        if audit:
+                            result["citation_audit"] = audit
+                            emit(type="phase", phase="audit", status="done",
+                                 detail=(f"citation audit: {audit['grounded']}/{audit['total_findings']} grounded, "
+                                         f"{audit['supported']} supported ({audit['citation_accuracy']:.0%} accuracy)"))
+                    except Exception as audit_exc:  # audit is best-effort, never sinks the run
+                        logger.warning("citation audit failed for %s: %s", recorder.run_id, audit_exc)
                     run_id = recorder.save(result, str(DEBATE_USAGE))
                     _put({"type": "done", "result": result, "usage": str(DEBATE_USAGE),
                           "run_id": run_id, "llm_logs": recorder.grouped_llm_logs()})

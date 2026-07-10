@@ -153,6 +153,9 @@
     .pill { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 700; }
     .pill.high { color: var(--green); border-color: #2f4a32; } .pill.medium { color: var(--amber); }
     .pill.low { color: var(--muted); } .pill.constructive { color: var(--green); } .pill.cautious { color: var(--red); }
+    .pill.bullish { color: var(--green); } .pill.neutral { color: var(--amber); } .pill.bearish { color: var(--red); }
+    .audit-box { border-top: 1px dashed var(--line); padding-top: 8px; display: grid; gap: 5px; justify-items: start; }
+    .audit-detail { color: var(--muted); font-size: 12px; }
 
     /* inspector */
     /* overflow-x hidden + overflow-wrap everywhere + min-width:0 on grid items so long
@@ -541,6 +544,11 @@
           ${(m.key_risks||[]).length?`<div><b>Key risks:</b><br>${(m.key_risks||[]).map(r=>`• ${esc(r)}`).join("<br>")}</div>`:""}
           ${(m.what_would_change_my_mind||[]).length?`<div><b>What would change the call:</b><br>${(m.what_would_change_my_mind||[]).map(r=>`• ${esc(r)}`).join("<br>")}</div>`:""}
           <div><div class="inspect-label">Citations (${(m.citations||[]).length})</div>${rawCiteChips(m.citations)}</div>
+          ${(a=>a?`<div class="audit-box"><div class="inspect-label">Citation audit — is the research trail real?</div>
+            <span class="pill ${a.citation_accuracy>=0.7?"bullish":a.citation_accuracy>=0.4?"neutral":"bearish"}">${Math.round(a.citation_accuracy*100)}% verified</span>
+            <span class="audit-detail">${a.grounded}/${a.total_findings} findings resolve to real filing passages · ${a.supported} textually supported</span>
+            ${(a.hallucinated_sources||[]).length?`<div class="audit-detail failed">unverifiable sources: ${a.hallucinated_sources.map(esc).join(", ")}</div>`:""}
+          </div>`:"")(d.citation_audit)}
         </div>`;
       }
       $("results").innerHTML=html||'<div class="empty">Running the desk…</div>';
@@ -621,6 +629,7 @@
       if(result.plan) D.debate.plan=result.plan;
       if(result.bear_case) D.debate.bear=result.bear_case;
       if(result.memo) D.debate.memo=result.memo;
+      if(result.citation_audit) D.debate.citation_audit=result.citation_audit;
       if(result.citation_urls) D.debate.citation_urls=result.citation_urls;
       // Map each draft to a specialist slot by name match; any draft whose LLM-authored
       // name doesn't contain a key falls into the next free slot so none are dropped.
