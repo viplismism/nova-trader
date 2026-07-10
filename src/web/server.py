@@ -288,8 +288,14 @@ def create_app() -> FastAPI:
                     # Citation audit while the filing store is still in memory — the
                     # persisted verdict ("are the citations real and do they support the
                     # claims?") is what makes the research trail checkable later.
+                    # Judged by a small fast model (paraphrase-aware) unless disabled;
+                    # audit_debate_result degrades to lexical overlap if the judge fails.
                     try:
-                        audit = await audit_debate_result(result, _store)
+                        judge = None
+                        if os.environ.get("NOVA_CITATION_JUDGE", "1") != "0":
+                            from anthropic import AsyncAnthropic
+                            judge = AsyncAnthropic()
+                        audit = await audit_debate_result(result, _store, judge_client=judge)
                         if audit:
                             result["citation_audit"] = audit
                             emit(type="phase", phase="audit", status="done",

@@ -119,3 +119,37 @@ def test_audit_debate_result_none_when_nothing_auditable():
 
     assert asyncio.run(audit_debate_result({"specialist_drafts": []}, _STORE)) is None
     assert asyncio.run(audit_debate_result({"specialist_drafts": [{"key_findings": [_FINDINGS[0]]}]}, None)) is None
+
+
+def test_audit_uses_judge_and_falls_back_when_judge_breaks():
+    from src.debate.eval_harness import audit_debate_result
+
+    result = {"specialist_drafts": [{"agent": "fundamental", "key_findings": [_FINDINGS[1]]}]}
+
+    class _Block:
+        type = "text"
+        text = '{"supported": true}'
+
+    class _Resp:
+        content = [_Block()]
+
+    class _GoodMessages:
+        async def create(self, **kwargs):
+            return _Resp()
+
+    class _GoodJudge:
+        messages = _GoodMessages()
+
+    m = asyncio.run(audit_debate_result(result, _STORE, judge_client=_GoodJudge()))
+    assert m["method"] == "llm-judge"
+    assert m["supported"] == 1  # judge confirms what lexical overlap missed
+
+    class _BrokenMessages:
+        async def create(self, **kwargs):
+            raise RuntimeError("api down")
+
+    class _BrokenJudge:
+        messages = _BrokenMessages()
+
+    m = asyncio.run(audit_debate_result(result, _STORE, judge_client=_BrokenJudge()))
+    assert m["method"].startswith("lexical")  # degraded, but the audit still exists

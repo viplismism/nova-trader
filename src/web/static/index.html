@@ -546,7 +546,7 @@
           <div><div class="inspect-label">Citations (${(m.citations||[]).length})</div>${rawCiteChips(m.citations)}</div>
           ${(a=>a?`<div class="audit-box"><div class="inspect-label">Citation audit — is the research trail real?</div>
             <span class="pill ${a.citation_accuracy>=0.7?"bullish":a.citation_accuracy>=0.4?"neutral":"bearish"}">${Math.round(a.citation_accuracy*100)}% verified</span>
-            <span class="audit-detail">${a.grounded}/${a.total_findings} findings resolve to real filing passages · ${a.supported} textually supported</span>
+            <span class="audit-detail">${a.grounded}/${a.total_findings} findings resolve to real filing passages · ${a.supported} confirmed supported by the cited passage</span>
             ${(a.hallucinated_sources||[]).length?`<div class="audit-detail failed">unverifiable sources: ${a.hallucinated_sources.map(esc).join(", ")}</div>`:""}
           </div>`:"")(d.citation_audit)}
         </div>`;

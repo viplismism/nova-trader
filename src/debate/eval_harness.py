@@ -109,13 +109,17 @@ async def evaluate_findings(
     }
 
 
-async def audit_debate_result(result: dict, store: Any) -> dict | None:
+async def audit_debate_result(result: dict, store: Any, judge_client: Any = None) -> dict | None:
     """Audit a finished debate's specialist findings against its filing store.
 
     Runs at debate completion (the store only lives in memory during the run)
     so the audit can be persisted with the trajectory — the research trail
     anyone can later check in the inspector. Returns None when there is
     nothing auditable (web-sourced debates cite URLs, not filing chunks).
+
+    With a judge_client the support check is paraphrase-aware (LLM judge);
+    if the judge path fails for any reason we degrade to the lexical check
+    rather than losing the audit.
     """
     findings = [
         f for d in (result or {}).get("specialist_drafts", [])
@@ -123,4 +127,9 @@ async def audit_debate_result(result: dict, store: Any) -> dict | None:
     ]
     if not findings or store is None:
         return None
+    if judge_client is not None:
+        try:
+            return await evaluate_findings(findings, store, judge_client=judge_client)
+        except Exception:
+            pass  # judge unavailable (billing, network) — lexical still beats no audit
     return await evaluate_findings(findings, store)
