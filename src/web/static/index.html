@@ -319,18 +319,26 @@
     const state = {
       mode: "signals", runSource: null, debateSource: null, askSource: null,
       modes: { signals: freshMode(), debate: freshMode() },
+      runStates: { signals: "ready", debate: "ready" },
     };
     const M = () => state.modes[state.mode];
 
     const esc = (v) => String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const pct = (v) => `${Math.round(Number(v||0)*100)}%`;
     const isUrl = (s) => /^https?:\/\//i.test(String(s||""));
-    const BUSY_STATES = new Set(["running", "debating", "loading…"]);
-    const isBusy = () => BUSY_STATES.has(state.runState);
-    const setState = (s) => {
-      state.runState = s;
-      // spinner while work is in flight, plain text otherwise
+    const BUSY_STATES = new Set(["running", "debating", "loading…", "recovering…"]);
+    // Signals and Debate can run at the same time, so each mode keeps its OWN
+    // state — the header badge always shows the state of the mode being viewed
+    // (a finished Signals run must not overwrite "debating" and vice versa).
+    const isBusy = (mode) => BUSY_STATES.has(state.runStates[mode || state.mode]);
+    const paintState = () => {
+      const s = state.runStates[state.mode] || "ready";
       $("runState").innerHTML = BUSY_STATES.has(s) ? `<span class="spin"></span>${s}` : s;
+    };
+    const setState = (s, mode) => {
+      const m = mode || state.mode;
+      state.runStates[m] = s;
+      if (m === state.mode) paintState();
     };
     function paragraphs(t){ const c=String(t||"").trim(); if(!c) return "<p>-</p>"; return c.split(/\n{2,}/).map(p=>`<p>${esc(p).replace(/\*\*/g,"")}</p>`).join(""); }
 
@@ -592,6 +600,7 @@
       $("recentWrap").classList.toggle("hide",mode!=="debate");
       $("recentRunsWrap").classList.toggle("hide",mode!=="signals");
       $("resultsTitle").textContent = mode==="signals"?"Signal Cards":"Research Desk";
+      paintState();  // the badge shows THIS mode's state (runs are independent)
       renderActivity(); renderInspector(); renderResults(); renderChat();
       $("askButton").disabled=!M().runId;
       if(mode==="debate") loadRecent(); else loadRecentRuns();
@@ -611,23 +620,23 @@
       const r=await fetch(`/api/config?${p}`); if(!r.ok) throw new Error(`config check failed (${r.status})`); return r.json();
     }
     async function runAnalysis(e){
-      e.preventDefault(); state.runSource&&state.runSource.close(); setState("running"); resetMode("signals");
+      e.preventDefault(); state.runSource&&state.runSource.close(); setState("running","signals"); resetMode("signals");
       $("runButton").disabled=true; $("stopButton").disabled=false;
-      let cfg; try{ cfg=await getConfig(); }catch(err){ pushVerdict("signals",err.message,"error"); setState("error"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
-      if(!cfg.has_credentials){ pushVerdict("signals",`${cfg.credential_key||"provider credentials"} not configured.`,"error"); setState("missing key"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
+      let cfg; try{ cfg=await getConfig(); }catch(err){ pushVerdict("signals",err.message,"error"); setState("error","signals"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
+      if(!cfg.has_credentials){ pushVerdict("signals",`${cfg.credential_key||"provider credentials"} not configured.`,"error"); setState("missing key","signals"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
       const p=new URLSearchParams({tickers:$("tickers").value,provider:$("provider").value,model:$("model").value,portfolio_mode:$("mode").value,agents:$("agents").value});
       const src=new EventSource(`/api/run?${p}`); state.runSource=src;
       src.addEventListener("run",ev=>{ const d=JSON.parse(ev.data); state.modes.signals.runId=d.run_id; });
       src.addEventListener("activity",ev=>addActivity("signals",JSON.parse(ev.data)));
       src.addEventListener("done",ev=>{ renderDone(JSON.parse(ev.data)); src.close(); });
-      src.addEventListener("failure",ev=>{ pushVerdict("signals",JSON.parse(ev.data).message||"Run failed.","error"); setState("error"); $("runButton").disabled=false; $("stopButton").disabled=true; src.close(); });
+      src.addEventListener("failure",ev=>{ pushVerdict("signals",JSON.parse(ev.data).message||"Run failed.","error"); setState("error","signals"); $("runButton").disabled=false; $("stopButton").disabled=true; src.close(); });
     }
     function renderDone(p){
       const b=state.modes.signals;
       b.runId=p.run_id; b.cards=p.cards||[]; b.llmLogs=p.llm_logs||{}; b.saved=p.saved_to?`saved: ${p.saved_to}`:"";
       if(p.verdict||p.summary) b.chat.push({role:"nova",who:"AlphaDesk — verdict",text:p.verdict||p.summary});
       finalizeActivity("signals");
-      setState("ready"); $("runButton").disabled=false; $("stopButton").disabled=true;
+      setState("ready","signals"); $("runButton").disabled=false; $("stopButton").disabled=true;
       if(state.mode==="signals"){ renderResults(); renderInspector(); renderChat(); $("askButton").disabled=!b.runId; }
       loadRecentRuns();
     }
@@ -668,26 +677,26 @@
       const m=D.debate.memo;
       if(m && !D._memoPushed){ D.chat.push({role:"nova",who:"AlphaDesk — research memo",text:`${m.ticker}: ${String(m.conviction).toUpperCase()} conviction, ${m.directional_lean}.\n\n${m.base_case}`}); D._memoPushed=true; }
       finalizeActivity("debate");
-      setState("ready"); $("debateButton").disabled=false; $("debateStop").disabled=true;
+      setState("ready","debate"); $("debateButton").disabled=false; $("debateStop").disabled=true;
       if(state.mode==="debate"){ renderDebate(); renderChat(); $("askButton").disabled=!D.runId; loadRecent(); }
     }
     // The stream dropped before 'done' — the run keeps going server-side and saves to
     // disk, so poll for the saved result and render it when ready.
     function recoverDebate(D, runId){
       if(D._recoverIv) clearInterval(D._recoverIv);  // never run two recovery polls at once
-      setState("recovering…"); debateActivity("recovery", "stream dropped — recovering the saved result…");
+      setState("recovering…","debate"); debateActivity("recovery", "stream dropped — recovering the saved result…");
       let tries=0;
       D._recoverIv=setInterval(async()=>{
         if(++tries>180){ clearInterval(D._recoverIv); D._recoverIv=null; return; }  // ~15 min cap
         try{
           const j=await (await fetch(`/api/debate/result?run_id=${encodeURIComponent(runId)}`)).json();
           if(j.status==="done"){ clearInterval(D._recoverIv); D._recoverIv=null; applyDebateDone(D,{result:j.result,run_id:runId,usage:j.result&&j.result.usage}); }
-          else if(j.status==="not_found"){ clearInterval(D._recoverIv); D._recoverIv=null; pushVerdict("debate","Debate stopped before producing a memo.","error"); setState("error"); $("debateButton").disabled=false; $("debateStop").disabled=true; }
+          else if(j.status==="not_found"){ clearInterval(D._recoverIv); D._recoverIv=null; pushVerdict("debate","Debate stopped before producing a memo.","error"); setState("error","debate"); $("debateButton").disabled=false; $("debateStop").disabled=true; }
         }catch(_){}
       },5000);
     }
     async function runDebate(e){
-      e.preventDefault(); state.debateSource&&state.debateSource.close(); setState("debating"); resetMode("debate");
+      e.preventDefault(); state.debateSource&&state.debateSource.close(); setState("debating","debate"); resetMode("debate");
       $("debateButton").disabled=true; $("debateStop").disabled=false;
       const D=state.modes.debate;
       const speed=$("dFast").value;
@@ -716,7 +725,7 @@
         paint();
       });
       src.addEventListener("done",ev=>{ gotDone=true; applyDebateDone(D, JSON.parse(ev.data)); src.close(); });
-      src.addEventListener("failure",ev=>{ gotDone=true; pushVerdict("debate",JSON.parse(ev.data).message||"Debate failed.","error"); setState("error"); $("debateButton").disabled=false; $("debateStop").disabled=true; src.close(); });
+      src.addEventListener("failure",ev=>{ gotDone=true; pushVerdict("debate",JSON.parse(ev.data).message||"Debate failed.","error"); setState("error","debate"); $("debateButton").disabled=false; $("debateStop").disabled=true; src.close(); });
       // Stream dropped (proxy/idle/network) before finishing → don't let EventSource silently
       // reconnect into a NEW run; close it and recover the saved result by run_id. If the
       // failure happened before 'start' (no run_id — e.g. 500 / missing key), surface the
@@ -725,7 +734,7 @@
         if(gotDone) return;
         src.close();
         if(D.debate.run_id){ recoverDebate(D, D.debate.run_id); }
-        else { pushVerdict("debate","Couldn't start the debate (connection failed before it began). Check the server / API key and try again.","error"); setState("error"); $("debateButton").disabled=false; $("debateStop").disabled=true; }
+        else { pushVerdict("debate","Couldn't start the debate (connection failed before it began). Check the server / API key and try again.","error"); setState("error","debate"); $("debateButton").disabled=false; $("debateStop").disabled=true; }
       };
     }
 
@@ -743,7 +752,7 @@
     }
     async function openDebateRun(runId){
       if(state.debateSource){ state.debateSource.close(); state.debateSource=null; }
-      resetMode("debate"); setState("loading…");
+      resetMode("debate"); setState("loading…","debate");
       const D=state.modes.debate;
       D.debate={ticker:"",source:"filings",horizon:"",speed:"",run_id:runId,plan:null,specialists:{},bear:null,memo:null,citation_urls:{}};
       D._memoPushed=false;
@@ -755,8 +764,8 @@
           if(r.input){ D.debate.ticker=r.input.ticker; D.debate.horizon=r.input.horizon; }
           D.debate.source=r.specialist_source||(r.input&&r.input.source)||"filings";
           applyDebateDone(D,{result:r,run_id:runId,usage:r.usage});
-        } else { setState("ready"); pushVerdict("debate","That run could not be loaded.","error"); }
-      }catch(_){ setState("error"); pushVerdict("debate","Failed to load that run.","error"); }
+        } else { setState("ready","debate"); pushVerdict("debate","That run could not be loaded.","error"); }
+      }catch(_){ setState("error","debate"); pushVerdict("debate","Failed to load that run.","error"); }
     }
 
     // ── recent Signals runs: re-open any saved run by id ──
@@ -773,13 +782,13 @@
     }
     async function openSignalsRun(runId){
       if(state.mode!=="signals") setMode("signals");
-      setState("loading…");
+      setState("loading…","signals");
       resetMode("signals");   // each opened run gets its OWN fresh chat/history, not appended to the last
       try{
         const j=await (await fetch(`/api/run/result?run_id=${encodeURIComponent(runId)}`)).json();
         if(j.status==="done"){ renderDone(j); }
-        else { pushVerdict("signals","That run could not be loaded.","error"); setState("ready"); }
-      }catch(_){ setState("error"); pushVerdict("signals","Failed to load that run.","error"); }
+        else { pushVerdict("signals","That run could not be loaded.","error"); setState("ready","signals"); }
+      }catch(_){ setState("error","signals"); pushVerdict("signals","Failed to load that run.","error"); }
     }
 
     // ── ask (chat) — works after a Signals run OR a Debate (both have a run_id) ──
@@ -806,11 +815,11 @@
     $("runForm").addEventListener("submit",runAnalysis);
     $("debateForm").addEventListener("submit",runDebate);
     $("askForm").addEventListener("submit",askQuestion);
-    $("stopButton").addEventListener("click",()=>{ closeSources(); setState("closed"); $("runButton").disabled=false; $("stopButton").disabled=true; });
+    $("stopButton").addEventListener("click",()=>{ closeSources(); setState("closed","signals"); $("runButton").disabled=false; $("stopButton").disabled=true; });
     $("debateStop").addEventListener("click",()=>{
       const rid=state.modes.debate.debate&&state.modes.debate.debate.run_id;
       if(rid) fetch(`/api/debate/cancel?run_id=${encodeURIComponent(rid)}`).catch(()=>{});  // explicit stop → halt tokens
-      closeSources(); setState("closed"); $("debateButton").disabled=false; $("debateStop").disabled=true;
+      closeSources(); setState("closed","debate"); $("debateButton").disabled=false; $("debateStop").disabled=true;
     });
     $("question").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); $("askForm").requestSubmit(); } });
     setMode(state.mode);  // initialize the default (signals) view + load its recent-runs list
