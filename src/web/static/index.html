@@ -745,7 +745,7 @@
         const j=await (await fetch("/api/debate/recent")).json();
         const runs=j.runs||[];
         el.innerHTML = runs.length
-          ? runs.map(r=>`<div class="recent-item" data-id="${esc(r.run_id)}">${esc(r.ticker||"?")} · ${esc(r.conviction||"")} ${esc(r.lean||"")}<span class="recent-q">${esc(r.question||"")}</span></div>`).join("")
+          ? runs.map(r=>`<div class="recent-item" data-id="${esc(r.run_id)}">${esc(r.ticker||"?")} · ${esc(r.conviction||"")} ${esc(r.lean||"")}${r.user?` · by ${esc(r.user)}`:""}<span class="recent-q">${esc(r.question||"")}</span></div>`).join("")
           : '<div class="empty" style="padding:4px">No saved debates yet.</div>';
         el.querySelectorAll(".recent-item[data-id]").forEach(it=>it.addEventListener("click",()=>openDebateRun(it.dataset.id)));
       }catch(_){ el.innerHTML='<div class="empty" style="padding:4px">Could not load recent debates.</div>'; }
@@ -775,7 +775,7 @@
         const j=await (await fetch("/api/recent")).json();
         const runs=j.runs||[];
         el.innerHTML = runs.length
-          ? runs.map(r=>`<div class="recent-item" data-id="${esc(r.run_id)}">${esc((r.tickers||[]).join(", ")||"?")}${r.stars?` · ${esc(String(r.stars))}★ ${esc(r.stars_label||"")}`:""}<span class="recent-q">${esc(r.as_of||"")}</span></div>`).join("")
+          ? runs.map(r=>`<div class="recent-item" data-id="${esc(r.run_id)}">${esc((r.tickers||[]).join(", ")||"?")}${r.stars?` · ${esc(String(r.stars))}★ ${esc(r.stars_label||"")}`:""}${r.user?` · by ${esc(r.user)}`:""}<span class="recent-q">${esc(r.as_of||"")}</span></div>`).join("")
           : '<div class="empty" style="padding:4px">No saved runs yet.</div>';
         el.querySelectorAll(".recent-item[data-id]").forEach(it=>it.addEventListener("click",()=>openSignalsRun(it.dataset.id)));
       }catch(_){ el.innerHTML='<div class="empty" style="padding:4px">Could not load recent runs.</div>'; }

@@ -136,5 +136,6 @@ class DebateRecorder:
                 "question": inp.get("question", ""),
                 "conviction": memo.get("conviction", ""),
                 "lean": memo.get("directional_lean", ""),
+                "user": inp.get("user", ""),
             })
         return rows

@@ -192,12 +192,17 @@ class RunRecorder:
             tickers = rec.get("tickers", []) or []
             consensus = rec.get("consensus", {}) or {}
             first = consensus.get(tickers[0], {}) if tickers else {}
+            try:
+                user = json.loads((d / "user.json").read_text()).get("user", "")
+            except (OSError, ValueError):
+                user = ""
             rows.append({
                 "run_id": rec.get("run_id", d.name),
                 "tickers": tickers,
                 "as_of": rec.get("as_of", ""),
                 "stars": first.get("stars", ""),
                 "stars_label": first.get("stars_label", ""),
+                "user": user,
             })
         return rows
 

@@ -76,8 +76,12 @@ def create_app() -> FastAPI:
             ok = False
             if header.startswith("Basic "):
                 with contextlib.suppress(Exception):
-                    _, _, supplied = base64.b64decode(header[6:]).decode().partition(":")
+                    username, _, supplied = base64.b64decode(header[6:]).decode().partition(":")
                     ok = secrets.compare_digest(supplied, access_password)
+                    if ok:
+                        # The shared password gates access; the username is the person.
+                        # Stamping it on the request lets every run record who ran it.
+                        request.state.desk_user = _clean_username(username)
             if not ok:
                 return PlainTextResponse(
                     "Authentication required", status_code=401,
@@ -107,12 +111,14 @@ def create_app() -> FastAPI:
 
     @app.get("/api/run")
     async def run_analysis(
+        request: Request,
         tickers: str = Query(..., min_length=1),
         provider: str | None = Query(None),
         model: str | None = Query(None),
         portfolio_mode: str = Query("research"),
         agents: str = Query(""),
     ) -> StreamingResponse:
+        desk_user = _desk_user(request)
         ticker_list = _parse_tickers(tickers)
         provider = provider or _default_provider()
         model = model or _default_model()
@@ -164,6 +170,7 @@ def create_app() -> FastAPI:
                         record=True,
                     )
                 _remember_run(recommendation)
+                _stamp_run_user(recommendation.run_id, desk_user)
                 events.put({
                     "type": "done",
                     "run_id": recommendation.run_id,
@@ -265,6 +272,7 @@ def create_app() -> FastAPI:
         done = threading.Event()
         cancel = threading.Event()
         recorder = DebateRecorder(symbol, question, horizon, source)
+        recorder.input["user"] = _desk_user(request)  # who ran it, persisted in debate.json
         with _ACTIVE_DEBATES_LOCK:
             _ACTIVE_DEBATES[recorder.run_id] = cancel
 
@@ -452,6 +460,27 @@ def _parse_agents(raw: str) -> list[str]:
 
 
 _RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+
+_USERNAME_RE = re.compile(r"[^A-Za-z0-9 ._@-]")
+
+
+def _clean_username(raw: str) -> str:
+    """Login usernames are attribution labels, not identities — sanitize for
+    filenames/JSON and cap the length so junk input can't pollute the logs."""
+    return _USERNAME_RE.sub("", (raw or "").strip())[:40] or "anonymous"
+
+
+def _desk_user(request: Request) -> str:
+    return getattr(request.state, "desk_user", "") or "anonymous"
+
+
+def _stamp_run_user(run_id: str, user: str) -> None:
+    """Record who ran a Signals run alongside its trajectory (best-effort)."""
+    try:
+        (runs_root() / run_id / "user.json").write_text(json.dumps({"user": user}))
+    except Exception:  # attribution must never break a run
+        pass
 
 
 def _validate_run_id(run_id: str) -> str:
