@@ -33,6 +33,8 @@
     }
     .mode-toggle button.on { background: var(--teal); color: #0a0d0b; border-color: var(--teal); }
     .state { color: var(--amber); font-weight: 700; min-width: 90px; text-align: right; }
+    .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--amber); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     main {
       display: grid;
@@ -139,7 +141,9 @@
     .mandate b { color: var(--teal); text-transform: uppercase; font-size: 12px; }
     .mandate p { margin: 4px 0 0; color: var(--muted); }
     .spec-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .spec-card { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 12px; display: grid; gap: 8px; cursor: pointer; }
+    /* align-content:start — otherwise a short card stretched to its taller grid
+       neighbor spreads its rows apart (the floating sub-label bug) */
+    .spec-card { border: 1px solid var(--line); background: var(--panel-2); border-radius: 8px; padding: 12px; display: grid; gap: 8px; cursor: pointer; align-content: start; }
     .spec-card.researching { border-color: var(--amber); }
     .spec-head { display: flex; align-items: baseline; justify-content: space-between; }
     .spec-name { color: var(--ink); font-weight: 800; text-transform: uppercase; font-size: 13px; }
@@ -321,7 +325,13 @@
     const esc = (v) => String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const pct = (v) => `${Math.round(Number(v||0)*100)}%`;
     const isUrl = (s) => /^https?:\/\//i.test(String(s||""));
-    const setState = (s) => $("runState").textContent = s;
+    const BUSY_STATES = new Set(["running", "debating", "loading…"]);
+    const isBusy = () => BUSY_STATES.has(state.runState);
+    const setState = (s) => {
+      state.runState = s;
+      // spinner while work is in flight, plain text otherwise
+      $("runState").innerHTML = BUSY_STATES.has(s) ? `<span class="spin"></span>${s}` : s;
+    };
     function paragraphs(t){ const c=String(t||"").trim(); if(!c) return "<p>-</p>"; return c.split(/\n{2,}/).map(p=>`<p>${esc(p).replace(/\*\*/g,"")}</p>`).join(""); }
 
     // ── citation chips ── (only emit an <a> for http(s) URLs — never a javascript:/data: href)
@@ -551,7 +561,7 @@
           </div>`:"")(d.citation_audit)}
         </div>`;
       }
-      $("results").innerHTML=html||'<div class="empty">Running the desk…</div>';
+      $("results").innerHTML=html||'<div class="empty"><span class="spin"></span>Running the desk — the plan, specialists, bear case, and memo stream in as they finish…</div>';
       document.querySelectorAll(".spec-card[data-key]").forEach(c=>c.addEventListener("click",()=>{
         M().selectedKey=c.dataset.key; M().manualSelection=true; renderInspector();
       }));
@@ -564,7 +574,10 @@
         else $("results").innerHTML='<div class="empty">Run a debate to populate the desk.</div>';
       } else {
         const cards=M().cards||[];
-        $("results").innerHTML = cards.length ? cards.map(renderCard).join("") : '<div class="empty">Run a ticker to populate signal cards.</div>';
+        const placeholder = isBusy()
+          ? '<div class="empty"><span class="spin"></span>the council is working — check Activity on the left; cards land here when analysts finish…</div>'
+          : '<div class="empty">Run a ticker to populate signal cards.</div>';
+        $("results").innerHTML = cards.length ? cards.map(renderCard).join("") : placeholder;
         bindAgentRows();
       }
     }
@@ -598,7 +611,7 @@
       const r=await fetch(`/api/config?${p}`); if(!r.ok) throw new Error(`config check failed (${r.status})`); return r.json();
     }
     async function runAnalysis(e){
-      e.preventDefault(); state.runSource&&state.runSource.close(); resetMode("signals"); setState("running");
+      e.preventDefault(); state.runSource&&state.runSource.close(); setState("running"); resetMode("signals");
       $("runButton").disabled=true; $("stopButton").disabled=false;
       let cfg; try{ cfg=await getConfig(); }catch(err){ pushVerdict("signals",err.message,"error"); setState("error"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
       if(!cfg.has_credentials){ pushVerdict("signals",`${cfg.credential_key||"provider credentials"} not configured.`,"error"); setState("missing key"); $("runButton").disabled=false; $("stopButton").disabled=true; return; }
@@ -674,7 +687,7 @@
       },5000);
     }
     async function runDebate(e){
-      e.preventDefault(); state.debateSource&&state.debateSource.close(); resetMode("debate"); setState("debating");
+      e.preventDefault(); state.debateSource&&state.debateSource.close(); setState("debating"); resetMode("debate");
       $("debateButton").disabled=true; $("debateStop").disabled=false;
       const D=state.modes.debate;
       const speed=$("dFast").value;
@@ -760,8 +773,8 @@
     }
     async function openSignalsRun(runId){
       if(state.mode!=="signals") setMode("signals");
-      resetMode("signals");   // each opened run gets its OWN fresh chat/history, not appended to the last
       setState("loading…");
+      resetMode("signals");   // each opened run gets its OWN fresh chat/history, not appended to the last
       try{
         const j=await (await fetch(`/api/run/result?run_id=${encodeURIComponent(runId)}`)).json();
         if(j.status==="done"){ renderDone(j); }
