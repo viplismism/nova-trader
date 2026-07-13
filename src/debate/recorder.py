@@ -71,7 +71,12 @@ class DebateRecorder:
         """Persist the run; returns the run_id. Never raises."""
         try:
             self.dir.mkdir(parents=True, exist_ok=True)
-            payload = {"run_id": self.run_id, "input": self.input, "usage": usage_str, **result}
+            # The engine's result carries its own "input" (ticker/question/horizon);
+            # merge it UNDER the recorder's input so extras stamped on the recorder
+            # (like the user who ran it) survive — **result last was silently
+            # overwriting them.
+            merged_input = {**(result.get("input") or {}), **self.input}
+            payload = {"run_id": self.run_id, "usage": usage_str, **result, "input": merged_input}
             (self.dir / "debate.json").write_text(json.dumps(payload, default=str, indent=2))
             with (self.dir / "trajectory.jsonl").open("w") as fh:
                 for c in self.calls:

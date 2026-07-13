@@ -153,3 +153,16 @@ def test_audit_uses_judge_and_falls_back_when_judge_breaks():
 
     m = asyncio.run(audit_debate_result(result, _STORE, judge_client=_BrokenJudge()))
     assert m["method"].startswith("lexical")  # degraded, but the audit still exists
+
+
+def test_recorder_save_preserves_stamped_user(tmp_path):
+    # the engine result carries its own "input" — it must not clobber extras
+    # (like the user) stamped on the recorder's input
+    from src.debate.recorder import DebateRecorder
+
+    rec = DebateRecorder("NVDA", "q?", "6-12 months", "web", base_dir=tmp_path)
+    rec.input["user"] = "vipul"
+    rec.save({"input": {"ticker": "NVDA", "question": "q?", "horizon": "6-12 months"}, "memo": {}})
+    saved = DebateRecorder.load(rec.run_id, base_dir=tmp_path)
+    assert saved["input"]["user"] == "vipul"
+    assert saved["input"]["ticker"] == "NVDA"
