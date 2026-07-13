@@ -53,6 +53,19 @@ _MAX_CACHED_RUNS = 24
 _ACTIVE_DEBATES: dict[str, threading.Event] = {}
 _ACTIVE_DEBATES_LOCK = threading.Lock()
 
+# Concurrency guard: with a shared Anthropic key and one instance, a stampede of
+# simultaneous runs degrades everyone (CPU contention + provider rate limits show
+# up as random agent failures). Cap in-flight work and tell the extra user the
+# desk is busy instead — a clear message beats a mysteriously broken run.
+_RUN_SLOTS = threading.BoundedSemaphore(int(os.environ.get("NOVA_MAX_CONCURRENT_RUNS", "3")))
+_DEBATE_SLOTS = threading.BoundedSemaphore(int(os.environ.get("NOVA_MAX_CONCURRENT_DEBATES", "2")))
+
+
+def _busy_stream(message: str) -> StreamingResponse:
+    def gen():
+        yield _sse({"type": "failure", "message": message}, "failure")
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
 _QA_SYSTEM = (
     "You are AlphaDesk, the assistant inside AlphaDesk. Answer from the supplied signal-card context only. "
     "Use short, clear paragraphs. If the run does not contain enough evidence, say exactly what is missing. "
@@ -186,9 +199,12 @@ def create_app() -> FastAPI:
             except Exception as exc:  # pragma: no cover - exact provider/network errors vary
                 events.put({"type": "failure", "message": _friendly_error(exc)})
             finally:
+                _RUN_SLOTS.release()
                 progress.unregister_handler(on_progress)
                 done.set()
 
+        if not _RUN_SLOTS.acquire(blocking=False):
+            return _busy_stream("The desk is at capacity (several analyses already in flight). Give it a minute and run again.")
         thread = threading.Thread(target=worker, name=f"nova-web-run-{ctx.run_id}", daemon=True)
         thread.start()
         return StreamingResponse(_stream_events(events, done), media_type="text/event-stream")
@@ -347,10 +363,15 @@ def create_app() -> FastAPI:
             finally:
                 # Guarantee the stream terminates and the registry never leaks, even if
                 # asyncio.run() failed before driver()'s own cleanup could run.
+                _DEBATE_SLOTS.release()
                 done.set()
                 with _ACTIVE_DEBATES_LOCK:
                     _ACTIVE_DEBATES.pop(recorder.run_id, None)
 
+        if not _DEBATE_SLOTS.acquire(blocking=False):
+            with _ACTIVE_DEBATES_LOCK:
+                _ACTIVE_DEBATES.pop(recorder.run_id, None)
+            return _busy_stream("The desk already has two debates in flight — they take a few minutes each. Try again shortly.")
         thread = threading.Thread(target=worker, name=f"nova-web-debate-{symbol}", daemon=True)
         thread.start()
         return StreamingResponse(

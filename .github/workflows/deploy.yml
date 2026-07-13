@@ -89,7 +89,8 @@ jobs:
             ENVVARS="$ENVVARS BRIGHTDATA_API_KEY=secretref:brightdata-key"
           fi
           az containerapp update -n "$APP" -g nova-demo-rg \
-            --set-env-vars $ENVVARS --min-replicas 0 --max-replicas 1 -o none
+            --set-env-vars $ENVVARS --min-replicas 0 --max-replicas 1 \
+            --cpu 1.0 --memory 2.0Gi -o none
           echo "Deployed $APP ->"
           az containerapp show -n "$APP" -g nova-demo-rg \
             --query "properties.configuration.ingress.fqdn" -o tsv
