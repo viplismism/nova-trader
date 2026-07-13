@@ -77,15 +77,18 @@ def create_app() -> FastAPI:
             if header.startswith("Basic "):
                 with contextlib.suppress(Exception):
                     username, _, supplied = base64.b64decode(header[6:]).decode().partition(":")
-                    ok = secrets.compare_digest(supplied, access_password)
+                    name = _clean_username(username)
+                    # The shared password gates access; the username is the person and
+                    # is REQUIRED (>= 2 real characters) so every run is attributable —
+                    # a correct password with no name still bounces back to the prompt.
+                    ok = secrets.compare_digest(supplied, access_password) and name != "anonymous" and len(name) >= 2
                     if ok:
-                        # The shared password gates access; the username is the person.
-                        # Stamping it on the request lets every run record who ran it.
-                        request.state.desk_user = _clean_username(username)
+                        request.state.desk_user = name
             if not ok:
                 return PlainTextResponse(
-                    "Authentication required", status_code=401,
-                    headers={"WWW-Authenticate": 'Basic realm="AlphaDesk"'},
+                    "Authentication required: enter YOUR NAME as the username, plus the shared password.",
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Basic realm="AlphaDesk - username must be YOUR NAME"'},
                 )
             return await call_next(request)
 
