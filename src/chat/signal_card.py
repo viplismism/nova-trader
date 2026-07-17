@@ -309,9 +309,17 @@ def signal_cards_context_text(recommendation: Recommendation) -> str:
         ])
         if card.valuation_target is not None:
             vt = card.valuation_target
+            dissent = (vt.upside < 0 and card.consensus_direction == "bullish") or \
+                      (vt.upside > 0 and card.consensus_direction == "bearish")
+            note = (
+                " NOTE: this target comes from the valuation analyst alone (a deliberately "
+                f"conservative intrinsic-value model) and DISAGREES with the {card.consensus_direction} "
+                "consensus — present it as that analyst's dissent, never as the desk's own target."
+                if dissent else " (valuation analyst's model)"
+            )
             lines.append(
-                f"12-month price target: ${vt.target_price:,.2f} ({vt.upside:+.1%} vs ${vt.current_price:,.2f}); "
-                f"intrinsic fair value ${vt.fair_value:,.2f}; cost of equity {vt.cost_of_equity:.1%}."
+                f"Valuation analyst 12-month target: ${vt.target_price:,.2f} ({vt.upside:+.1%} vs ${vt.current_price:,.2f}); "
+                f"intrinsic fair value ${vt.fair_value:,.2f}; cost of equity {vt.cost_of_equity:.1%}.{note}"
             )
         if card.quantity:
             lines.append(f"Approved size: {card.quantity} shares.")

@@ -39,3 +39,27 @@ def test_12mo_target_is_fair_value_drifted_by_cost_of_equity():
     )
     assert round(vt.target_price, 2) == 130.39
     assert round(vt.upside, 4) == 0.3039
+
+
+def test_context_flags_valuation_dissent_on_bullish_consensus():
+    # A bearish valuation target under a bullish consensus must read as the
+    # analyst's dissent, never as the desk's own target (VC-meeting lesson).
+    from src.chat.signal_card import signal_cards_context_text
+    from src.schemas.signals import (
+        Consensus, Decisions, Recommendation, Signal, TickerDecision, ValuationTarget,
+    )
+
+    vt = ValuationTarget(current_price=633.0, fair_value=269.29, target_price=297.57,
+                         upside=-0.53, cost_of_equity=0.105)
+    rec = Recommendation(
+        run_id="r1", as_of="2026-07-17", tickers=["META"],
+        signals=[Signal(agent_id="valuation", ticker="META", direction="bearish",
+                        confidence=0.95, valuation_target=vt)],
+        consensus={"META": Consensus(ticker="META", direction="bullish", confidence=0.64,
+                                     weighted_score=0.3, stars=4, stars_label="Buy", bull_count=5)},
+        decisions=Decisions(per_ticker={"META": TickerDecision(ticker="META", action="buy",
+                                                               quantity=10, confidence=0.64)}),
+    )
+    ctx = signal_cards_context_text(rec)
+    assert "DISAGREES with the bullish consensus" in ctx
+    assert "dissent" in ctx
