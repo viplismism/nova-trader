@@ -185,17 +185,18 @@ def search_line_items(
     }
     response = _make_api_request(url, headers, method="POST", json_data=body)
     if response.status_code != 200:
-        return []
-    
+        # Fallback to Yahoo Finance annual statements (multi-period)
+        return _yf.search_line_items(ticker, line_items, end_date, period, limit)
+
     try:
         data = response.json()
         response_model = LineItemResponse(**data)
         search_results = response_model.search_results
     except Exception as e:
         logger.warning("Failed to parse line items response for %s: %s", ticker, e)
-        return []
+        return _yf.search_line_items(ticker, line_items, end_date, period, limit)
     if not search_results:
-        return []
+        return _yf.search_line_items(ticker, line_items, end_date, period, limit)
 
     # Cache the results
     return search_results[:limit]
