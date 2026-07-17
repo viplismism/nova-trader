@@ -323,7 +323,14 @@
     };
     const M = () => state.modes[state.mode];
 
-    const esc = (v) => String(v ?? "").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
+    // Hide the retired valuation-target sentence from both new and reopened runs.
+    function withoutValuationTarget(v){
+      return String(v ?? "")
+        .replace(/(?:the\s+)?12[- ]?month target\b[^.!?]*(?:[.!?]|$)/gi, "")
+        .replace(/12mo target\b[^.!?]*(?:[.!?]|$)/gi, "")
+        .replace(/\s{2,}/g, " ").trim();
+    }
+    const esc = (v) => withoutValuationTarget(v).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#039;");
     const pct = (v) => `${Math.round(Number(v||0)*100)}%`;
     const isUrl = (s) => /^https?:\/\//i.test(String(s||""));
     const BUSY_STATES = new Set(["running", "debating", "loading…", "recovering…"]);

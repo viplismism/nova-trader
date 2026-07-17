@@ -16,7 +16,6 @@ from src.registry import AGENT_REGISTRY
 from src.schemas.signals import (
     FilingCitation,
     Recommendation,
-    ValuationTarget,
     WebSourceCitation,
 )
 
@@ -130,10 +129,9 @@ class SignalCard(BaseModel):
     consensus_direction: str
     consensus_confidence: float
     weighted_score: float = 0.0
-    # S&P-STARS-style rating + the valuation agent's 12-month price target.
+    # S&P-STARS-style rating.
     stars: int = 3
     stars_label: str = "Hold"
-    valuation_target: ValuationTarget | None = None
     vote_summary: dict[str, int] = Field(default_factory=dict)
     decision_reasoning: str = ""
     risk: RiskLimitCard = Field(default_factory=RiskLimitCard)
@@ -258,11 +256,6 @@ def build_signal_cards(recommendation: Recommendation) -> list[SignalCard]:
             continue
         ticker_signals = by_ticker.get(ticker, [])
         agents = [_agent_card(signal) for signal in ticker_signals]
-        valuation_target = next(
-            (s.valuation_target for s in ticker_signals
-             if s.agent_id == "valuation" and s.valuation_target is not None),
-            None,
-        )
         card = SignalCard(
             run_id=recommendation.run_id,
             as_of=recommendation.as_of,
@@ -275,7 +268,6 @@ def build_signal_cards(recommendation: Recommendation) -> list[SignalCard]:
             weighted_score=float(consensus.weighted_score if consensus is not None else 0.0),
             stars=int(consensus.stars if consensus is not None else 3),
             stars_label=consensus.stars_label if consensus is not None else "Hold",
-            valuation_target=valuation_target,
             vote_summary=_vote_summary(consensus, agents),
             decision_reasoning=clean_reasoning_text(decision.reasoning, limit=700),
             risk=_risk_card(recommendation.limits.per_ticker.get(ticker)),
@@ -307,22 +299,6 @@ def signal_cards_context_text(recommendation: Recommendation) -> str:
             f"{card.ticker}: {card.action.upper()} at {card.action_confidence:.0%}; consensus {card.consensus_direction.upper()} at {card.consensus_confidence:.0%}; weighted score {card.weighted_score:+.2f}; rating {card.stars}/5 ({card.stars_label}).",
             f"Votes: {votes.get('bullish', 0)} bullish, {votes.get('bearish', 0)} bearish, {votes.get('neutral', 0)} neutral, {votes.get('abstained', 0)} abstained, {votes.get('failed', 0)} failed.",
         ])
-        if card.valuation_target is not None:
-            vt = card.valuation_target
-            fair_gap = (vt.fair_value / vt.current_price - 1) if vt.current_price else 0.0
-            dissent = (fair_gap < 0 and card.consensus_direction == "bullish") or \
-                      (fair_gap > 0 and card.consensus_direction == "bearish")
-            note = (
-                " NOTE: this is the valuation analyst alone (a deliberately conservative "
-                f"intrinsic-value model) and DISAGREES with the {card.consensus_direction} "
-                "consensus — present it as that one analyst's dissent (the 'valuation variant'), "
-                "NEVER as the desk's own price target."
-                if dissent else " (the 'valuation variant' — this one analyst's conservative model, not the desk's target)"
-            )
-            lines.append(
-                f"Valuation variant (conservative intrinsic-value model): fair value ${vt.fair_value:,.2f} "
-                f"({fair_gap:+.1%} vs ${vt.current_price:,.2f} price).{note}"
-            )
         if card.quantity:
             lines.append(f"Approved size: {card.quantity} shares.")
         if card.decision_reasoning:

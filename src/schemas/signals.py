@@ -42,21 +42,6 @@ class FilingCitation(BaseModel):
 # ── Analyst output ──────────────────────────────────────────
 
 
-class ValuationTarget(BaseModel):
-    """A 12-month price target derived from the valuation agent's intrinsic value.
-
-    fair_value is the blended-method intrinsic value per share today; target_price
-    drifts it forward one year at the equity investor's required return (cost of
-    equity, CAPM). upside is target vs the current traded price.
-    """
-
-    current_price: float
-    fair_value: float
-    target_price: float
-    upside: float
-    cost_of_equity: float
-
-
 class Signal(BaseModel):
     """The single output of every analyst agent.
 
@@ -79,9 +64,6 @@ class Signal(BaseModel):
     # LLM explain-only narration over the deterministic numbers. Verdict-immutable:
     # never set by Signal.failed/abstained and never affects direction/confidence.
     explain_reasoning: str = ""
-    # 12-month price target — only set by the valuation agent. Additive/default-None
-    # so other agents and older saved runs still validate.
-    valuation_target: "ValuationTarget | None" = None
     status: SignalStatus = "ok"
     error: str | None = None
 
