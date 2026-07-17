@@ -661,6 +661,26 @@
 
     // ── debate run ──
     function debateActivity(label,status){ addActivity("debate",{agent:label,ticker:"",status,analysis:status}); }
+    function hydrateDebateActivity(D){
+      const b=state.modes.debate;
+      if(b.activity.size) return;
+      const addSaved=(agent,analysis)=>{
+        const row={agent,ticker:"",status:"done",analysis};
+        const key=agent+":";
+        b.activity.set(key,row);
+        b.timeline.push({...row,key,received_at:"saved run"});
+      };
+      if(D.debate.plan) addSaved("plan","done · research plan loaded");
+      for(const k of Object.keys(SPEC_LABELS)){
+        const s=D.debate.specialists[k];
+        if(s && (s.status==="done" || s.draft)){
+          addSaved(k,"done · "+(s.draft?.stance||"findings loaded"));
+        }
+      }
+      if(D.debate.bear) addSaved("bear","done · challenge loaded");
+      if(D.debate.memo) addSaved("synthesis","done · memo loaded");
+      if(!b.activity.size) addSaved("debate","done · saved result loaded");
+    }
     function toolBits(d){ return d.query || (d.results&&d.results.length?d.results.slice(0,4).join(", "):""); }
     // Fill the desk from a saved/complete result (used by both the live 'done' event
     // and recovery-by-run_id if the stream dropped). Idempotent.
@@ -694,9 +714,10 @@
       if(d.usage) D.saved=`usage: ${d.usage}`;
       const m=D.debate.memo;
       if(m && !D._memoPushed){ D.chat.push({role:"nova",who:"AlphaDesk — research memo",text:`${m.ticker}: ${String(m.conviction).toUpperCase()} conviction, ${m.directional_lean}.\n\n${m.base_case}`}); D._memoPushed=true; }
+      hydrateDebateActivity(D);
       finalizeActivity("debate");
       setState("ready","debate"); $("debateButton").disabled=false; $("debateStop").disabled=true;
-      if(state.mode==="debate"){ renderDebate(); renderChat(); $("askButton").disabled=!D.runId; loadRecent(); }
+      if(state.mode==="debate"){ renderDebate(); renderActivity(); renderInspector(); renderChat(); $("askButton").disabled=!D.runId; loadRecent(); }
     }
     // The stream dropped before 'done' — the run keeps going server-side and saves to
     // disk, so poll for the saved result and render it when ready.
