@@ -430,7 +430,10 @@
       const llm=M().llmLogs?.[agent]||[];
       // debate specialist?
       const spec=M().debate?.specialists?.[agent];
-      const evHtml=events.length?events.map(r=>`<div class="log-line"><span class="log-time">${esc(r.received_at||"")}</span><span class="log-text">${esc(r.analysis||r.status||"working")}</span></div>`).join(""):'<div class="empty">No timeline yet.</div>';
+      // The timeline only exists for runs watched live; a reopened run is complete.
+      const evHtml=events.length
+        ?events.map(r=>`<div class="log-line"><span class="log-time">${esc(r.received_at||"")}</span><span class="log-text">${esc(r.analysis||r.status||"working")}</span></div>`).join("")
+        :(sg?'<div class="empty">Run complete — the live timeline is only captured while a run executes.</div>':'<div class="empty">No timeline yet.</div>');
       let sigHtml="";
       if(sg){
         // map filing chunk-ids -> EDGAR url so [AAPL-10K-0100] becomes clickable
@@ -462,7 +465,7 @@
           ${c.prompt?`<details class="llm-fold"><summary>▸ Full prompt (${c.prompt.length} chars)</summary><div class="llm-text">${esc(c.prompt)}</div></details>`:""}
         </div>`).join("")}</div>`:"";
       $("inspector").innerHTML=`<div class="inspect-title">${esc((agent||"").replaceAll("_"," "))}${ticker?` [${esc(ticker)}]`:""}</div>
-        <div class="inspect-block"><div class="inspect-label">Current</div><div>${esc(latest.analysis||latest.status||"working")}</div></div>
+        <div class="inspect-block"><div class="inspect-label">Current</div><div>${esc(latest.analysis||latest.status||(sg?`done · ${sg.status}`:"—"))}</div></div>
         <div class="inspect-block"><div class="inspect-label">Activity Log</div>${evHtml}</div>${sigHtml}${llmHtml}`;
     }
 
@@ -582,9 +585,12 @@
         else $("results").innerHTML='<div class="empty">Run a debate to populate the desk.</div>';
       } else {
         const cards=M().cards||[];
-        const placeholder = isBusy()
-          ? '<div class="empty"><span class="spin"></span>the council is working — check Activity on the left; cards land here when analysts finish…</div>'
-          : '<div class="empty">Run a ticker to populate signal cards.</div>';
+        const st=state.runStates[state.mode];
+        const placeholder = st==="loading…"
+          ? '<div class="empty"><span class="spin"></span>opening saved run…</div>'
+          : isBusy()
+            ? '<div class="empty"><span class="spin"></span>the council is working — check Activity on the left; cards land here when analysts finish…</div>'
+            : '<div class="empty">Run a ticker to populate signal cards.</div>';
         $("results").innerHTML = cards.length ? cards.map(renderCard).join("") : placeholder;
         bindAgentRows();
       }
@@ -636,8 +642,16 @@
       b.runId=p.run_id; b.cards=p.cards||[]; b.llmLogs=p.llm_logs||{}; b.saved=p.saved_to?`saved: ${p.saved_to}`:"";
       if(p.verdict||p.summary) b.chat.push({role:"nova",who:"AlphaDesk — verdict",text:p.verdict||p.summary});
       finalizeActivity("signals");
+      // Reopened run: no live activity stream ever existed, so synthesize the
+      // Activity panel from the saved cards — every analyst is DONE, not "working".
+      if(b.activity.size===0){
+        for(const card of b.cards) for(const a of (card.agents||[])){
+          const label = a.status==="ok" ? `done · ${a.direction} ${Math.round((a.confidence||0)*100)}%` : `done · ${a.status}`;
+          b.activity.set(`${a.agent_id}:${card.ticker}`,{agent:a.agent_id,ticker:card.ticker,status:"done",analysis:label});
+        }
+      }
       setState("ready","signals"); $("runButton").disabled=false; $("stopButton").disabled=true;
-      if(state.mode==="signals"){ renderResults(); renderInspector(); renderChat(); $("askButton").disabled=!b.runId; }
+      if(state.mode==="signals"){ renderActivity(); renderResults(); renderInspector(); renderChat(); $("askButton").disabled=!b.runId; }
       loadRecentRuns();
     }
 
