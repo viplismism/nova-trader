@@ -4,6 +4,7 @@ Used automatically by api.py when the primary API returns no data (no API key or
 """
 
 import logging
+import time
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -43,8 +44,35 @@ def _first_row(frame, *labels) -> dict:
     return {}
 
 
-def _statement_rows(t) -> tuple[list, dict[str, dict]]:
+# Statements are three network fetches per ticker, and both get_financial_metrics
+# and search_line_items need them within the same snapshot — cache briefly so a
+# run downloads each ticker's statements once, not twice.
+_STMT_CACHE: dict[str, tuple[float, list, dict]] = {}
+_STMT_TTL_S = 600.0
+
+
+def _cache_clear() -> None:  # for tests
+    _STMT_CACHE.clear()
+
+
+def _growth(cur, prev):
+    """YoY growth with a sign-safe denominator.
+
+    Plain cur/prev - 1 inverts the sign when the prior period is negative
+    (a loss-to-profit turnaround would read as a huge DECLINE); dividing the
+    delta by abs(prev) keeps direction honest. None when prev is 0/missing.
+    """
+    if cur is None or prev is None or prev == 0:
+        return None
+    return (cur - prev) / abs(prev)
+
+
+def _statement_rows(ticker: str) -> tuple[list, dict[str, dict]]:
     """All statement rows we consume, plus the union of period columns (newest first)."""
+    hit = _STMT_CACHE.get(ticker)
+    if hit and time.monotonic() - hit[0] < _STMT_TTL_S:
+        return hit[1], hit[2]
+    t = yf.Ticker(ticker)
     inc, bal, cf = t.income_stmt, t.balance_sheet, t.cashflow
     rows = {
         "revenue": _first_row(inc, "Total Revenue", "Operating Revenue"),
@@ -68,6 +96,7 @@ def _statement_rows(t) -> tuple[list, dict[str, dict]]:
         "current_liabilities": _first_row(bal, "Current Liabilities"),
     }
     cols = sorted({c for r in rows.values() for c in r}, reverse=True)
+    _STMT_CACHE[ticker] = (time.monotonic(), cols, rows)
     return cols, rows
 
 
@@ -77,7 +106,7 @@ def search_line_items(ticker: str, line_items: list[str], end_date: str,
     if not _YF_AVAILABLE:
         return []
     try:
-        cols, rows = _statement_rows(yf.Ticker(ticker))
+        cols, rows = _statement_rows(ticker)
         out: list[LineItem] = []
         for col in cols[:limit]:
             fields = {name: row.get(col) for name, row in rows.items()}
@@ -164,19 +193,15 @@ def get_financial_metrics(ticker: str, end_date: str, period: str = "ttm", limit
     if not _YF_AVAILABLE:
         return []
     try:
-        t = yf.Ticker(ticker)
-        info = t.info or {}
+        info = yf.Ticker(ticker).info or {}
         currency = info.get("currency", "USD")
-        cols, rows = _statement_rows(t)
+        cols, rows = _statement_rows(ticker)
 
         def g(name: str, i: int):
             return rows[name].get(cols[i]) if i < len(cols) else None
 
         def yoy(name: str, i: int):
-            cur, prev = g(name, i), g(name, i + 1)
-            if cur is None or not prev:
-                return None
-            return cur / prev - 1
+            return _growth(g(name, i), g(name, i + 1))
 
         records: list[FinancialMetrics] = []
         for i, col in enumerate(cols[:limit]):
@@ -202,7 +227,7 @@ def get_financial_metrics(ticker: str, end_date: str, period: str = "ttm", limit
                 book_value_growth=yoy("shareholders_equity", i),
                 free_cash_flow_growth=yoy("free_cash_flow", i),
                 operating_income_growth=yoy("operating_income", i),
-                earnings_per_share_growth=(eps_now / eps_prev - 1) if eps_now is not None and eps_prev else None,
+                earnings_per_share_growth=_growth(eps_now, eps_prev),
                 earnings_per_share=eps_now,
                 book_value_per_share=_safe_div(equity, shares),
                 free_cash_flow_per_share=_safe_div(g("free_cash_flow", i), shares),
@@ -332,10 +357,13 @@ def _safe_div(a, b):
 
 
 def _safe_float(val):
-    """Convert to float or return None."""
+    """Convert to float or return None. NaN (yfinance's missing-cell marker)
+    becomes None too — a NaN that slips through poisons every downstream sum,
+    average, and comparison without ever raising."""
     if val is None:
         return None
     try:
-        return float(val)
+        f = float(val)
     except (ValueError, TypeError):
         return None
+    return None if f != f else f  # NaN != NaN

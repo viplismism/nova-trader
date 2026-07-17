@@ -183,10 +183,13 @@ def search_line_items(
         "period": period,
         "limit": limit,
     }
+    def _yahoo_fallback() -> list[LineItem]:
+        # Yahoo annual statements: multi-period, already capex-normalized.
+        return _yf.search_line_items(ticker, line_items, end_date, period, limit)
+
     response = _make_api_request(url, headers, method="POST", json_data=body)
     if response.status_code != 200:
-        # Fallback to Yahoo Finance annual statements (multi-period)
-        return _yf.search_line_items(ticker, line_items, end_date, period, limit)
+        return _yahoo_fallback()
 
     try:
         data = response.json()
@@ -194,11 +197,18 @@ def search_line_items(
         search_results = response_model.search_results
     except Exception as e:
         logger.warning("Failed to parse line items response for %s: %s", ticker, e)
-        return _yf.search_line_items(ticker, line_items, end_date, period, limit)
+        return _yahoo_fallback()
     if not search_results:
-        return _yf.search_line_items(ticker, line_items, end_date, period, limit)
+        return _yahoo_fallback()
 
-    # Cache the results
+    # Canonical sign convention: capital_expenditure is POSITIVE SPEND everywhere
+    # downstream (owner earnings subtracts it). Cash-flow statements report it as
+    # a negative outflow, so normalize at this boundary regardless of source.
+    for item in search_results:
+        capex = getattr(item, "capital_expenditure", None)
+        if isinstance(capex, (int, float)) and capex < 0:
+            item.capital_expenditure = abs(capex)
+
     return search_results[:limit]
 
 

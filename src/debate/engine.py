@@ -20,6 +20,7 @@ from anthropic import AsyncAnthropic
 
 from src.debate.filings_rag import FilingStore
 from src.debate.market_context import build_market_context
+from src.utils.llm import model_supports_thinking
 
 
 # Supervisor / bear / synthesizer run on the reasoning model; the 4 parallel
@@ -588,8 +589,11 @@ async def run_debate(ticker: str, question: str, horizon: str, specialist_source
     timings: dict[str, float] = {}
     store = None
     spec_model = "claude-haiku-4-5" if fast else SPECIALIST_MODEL
-    spec_effort = None if fast else "medium"   # Haiku rejects the effort param
-    spec_thinking = not fast                   # Haiku rejects adaptive thinking
+    # Capability-gated (not fast-flag-gated): an env override to a haiku-class
+    # SPECIALIST_MODEL with fast=False must also drop effort/thinking or every
+    # specialist call 400s.
+    spec_effort = "medium" if model_supports_thinking(spec_model) else None
+    spec_thinking = model_supports_thinking(spec_model)
     bear_m = bear_model or REASONING_MODEL     # quick tier runs the bear on Sonnet
 
     # Optional live market context (prices/cap from Nova's data stack) — best-effort,

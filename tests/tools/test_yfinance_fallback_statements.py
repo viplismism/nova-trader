@@ -46,7 +46,10 @@ class _StubTicker:
 
 @pytest.fixture(autouse=True)
 def _stub_yf(monkeypatch):
+    yfb._cache_clear()
     monkeypatch.setattr(yfb.yf, "Ticker", lambda _t: _StubTicker())
+    yield
+    yfb._cache_clear()
 
 
 def test_line_items_multi_period_with_capex_normalized():
@@ -68,3 +71,28 @@ def test_metrics_multi_period_with_growth_and_overlay():
     assert m[0].market_cap == pytest.approx(963e9)     # info overlay on newest
     assert m[1].market_cap is None                      # not on older periods
     assert m[3].revenue_growth is None                  # oldest has no prior year
+
+
+def test_growth_sign_safe_across_loss_to_profit():
+    # 2023 net income was -5e9, 2022 was +8.6e9: 2023 "growth" must be NEGATIVE
+    # (profit -> loss) and 2024 (loss -> small profit) must be POSITIVE — the
+    # naive cur/prev-1 inverts both when prev < 0.
+    m = yfb.get_financial_metrics("MU", "2026-07-15")
+    g_2024 = m[1].earnings_growth  # 0.7e9 vs -5e9: improvement
+    g_2023 = m[2].earnings_growth  # -5e9 vs 8.6e9: collapse
+    assert g_2024 is not None and g_2024 > 0
+    assert g_2023 is not None and g_2023 < 0
+
+
+def test_statements_fetched_once_per_ticker(monkeypatch):
+    calls = {"n": 0}
+    class _Counting(_StubTicker):
+        def __init__(self):
+            calls["n"] += 1
+    yfb._cache_clear()
+    monkeypatch.setattr(yfb.yf, "Ticker", lambda _t: _Counting())
+    yfb.get_financial_metrics("MU", "2026-07-15")
+    yfb.search_line_items("MU", [], "2026-07-15")
+    # one Ticker for .info + one inside _statement_rows; the second function
+    # must hit the statements cache instead of re-downloading
+    assert calls["n"] <= 2

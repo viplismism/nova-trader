@@ -29,6 +29,14 @@ _PROVIDER_KEYS = {
 _ANTHROPIC_DEFAULT_MODEL = "claude-opus-4-8"
 
 
+def model_supports_thinking(model: str | None) -> bool:
+    """Central capability check: which Anthropic models accept the adaptive
+    thinking / effort params. Haiku-class models reject both. Every caller
+    (chat streaming, debate engine) must consult THIS instead of sniffing
+    model names locally — one place to update when model families change."""
+    return "haiku" not in (model or "")
+
+
 def _ensure_env_loaded() -> None:
     global _ENV_LOADED
     if not _ENV_LOADED:
@@ -765,10 +773,10 @@ def _stream_chat_once(
             "messages": convo,
         }
         # Adaptive thinking with summarized display so the chat surface can
-        # stream Claude's reasoning into its own channel. Haiku rejects the
+        # stream the model's reasoning into its own channel. Haiku rejects the
         # thinking param (and grounded Q&A doesn't need it). No temperature —
         # sampling params 400 on Opus 4.8.
-        if "haiku" not in chat_model:
+        if model_supports_thinking(chat_model):
             stream_kwargs["thinking"] = {"type": "adaptive", "display": "summarized"}
         if system:
             stream_kwargs["system"] = system

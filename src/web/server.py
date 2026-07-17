@@ -206,7 +206,11 @@ def create_app() -> FastAPI:
         if not _RUN_SLOTS.acquire(blocking=False):
             return _busy_stream("The desk is at capacity (several analyses already in flight). Give it a minute and run again.")
         thread = threading.Thread(target=worker, name=f"nova-web-run-{ctx.run_id}", daemon=True)
-        thread.start()
+        try:
+            thread.start()
+        except BaseException:  # thread never ran -> its finally can't release the slot
+            _RUN_SLOTS.release()
+            raise
         return StreamingResponse(_stream_events(events, done), media_type="text/event-stream")
 
     @app.get("/api/ask")
@@ -373,7 +377,13 @@ def create_app() -> FastAPI:
                 _ACTIVE_DEBATES.pop(recorder.run_id, None)
             return _busy_stream("The desk already has two debates in flight — they take a few minutes each. Try again shortly.")
         thread = threading.Thread(target=worker, name=f"nova-web-debate-{symbol}", daemon=True)
-        thread.start()
+        try:
+            thread.start()
+        except BaseException:  # thread never ran -> its finally can't release the slot
+            _DEBATE_SLOTS.release()
+            with _ACTIVE_DEBATES_LOCK:
+                _ACTIVE_DEBATES.pop(recorder.run_id, None)
+            raise
         return StreamingResponse(
             _stream_events(events, done),
             media_type="text/event-stream",
