@@ -495,28 +495,12 @@
       }).join("");
       const stars = card.stars||3, starsTitle = esc(card.stars_label||"Hold");
       const starStr = "★".repeat(stars)+"☆".repeat(5-stars);
-      const vt = card.valuation_target;
-      // This is ONE analyst's deliberately-conservative intrinsic-value read — a
-      // "valuation variant", NOT the desk's price target. Labelling it "12mo target"
-      // made a -53% figure sit under a BUY headline and read as self-contradiction.
-      // Show the fair value vs price (drop the shaky cost-of-equity drift), and flag
-      // it explicitly when it dissents from the consensus.
-      let targetFact = "";
-      if (vt && vt.current_price) {
-        const fairGap = vt.fair_value / vt.current_price - 1;
-        const dissent = (fairGap < 0 && card.consensus_direction === "bullish") || (fairGap > 0 && card.consensus_direction === "bearish");
-        const nums = `fair value ~$${vt.fair_value.toFixed(2)} <em class="${fairGap>=0?'up':'down'}">(${fairGap>=0?'+':''}${(fairGap*100).toFixed(1)}% vs $${vt.current_price.toFixed(2)})</em>`;
-        targetFact = dissent
-          ? `<div class="fact"><span>valuation variant</span><strong>the valuation analyst's conservative model sees ${nums} — <em class="down">one lens of ${(card.agents||[]).length}, dissenting from the ${esc(card.consensus_direction)} desk call</em>. See its card below for why.</strong></div>`
-          : `<div class="fact"><span>valuation variant</span><strong>${nums} <span class="audit-detail">· valuation analyst's conservative model, not the desk's target</span></strong></div>`;
-      }
       return `<article class="signal-card">
         <div class="card-head"><div class="ticker">${esc(card.ticker)}</div>
           <div class="rating" title="STARS rating: ${starsTitle}"><span class="stars">${starStr}</span> ${starsTitle}</div>
           <div class="action ${esc(action)}">${esc(action)} ${pct(card.action_confidence)}</div></div>
         <div class="facts">
           <div class="fact"><span>consensus</span><strong>${esc(card.consensus_direction)} ${pct(card.consensus_confidence)}</strong></div>
-          ${targetFact}
           <div class="fact"><span>votes</span><strong>${votes.bullish||0} bull / ${votes.bearish||0} bear / ${votes.neutral||0} neutral</strong></div>
           <div class="fact"><span>decision</span><strong>${esc(card.decision_reasoning||"-")}</strong></div>
         </div>
