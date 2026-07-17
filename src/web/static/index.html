@@ -496,17 +496,19 @@
       const stars = card.stars||3, starsTitle = esc(card.stars_label||"Hold");
       const starStr = "★".repeat(stars)+"☆".repeat(5-stars);
       const vt = card.valuation_target;
-      // The 12-mo target is ONE analyst's model (the conservative valuation agent),
-      // not the desk's call. When it points against the consensus direction it must
-      // read as an explicit dissent — "BUY" headlined with a -53% target reads as
-      // the desk contradicting itself.
+      // This is ONE analyst's deliberately-conservative intrinsic-value read — a
+      // "valuation variant", NOT the desk's price target. Labelling it "12mo target"
+      // made a -53% figure sit under a BUY headline and read as self-contradiction.
+      // Show the fair value vs price (drop the shaky cost-of-equity drift), and flag
+      // it explicitly when it dissents from the consensus.
       let targetFact = "";
-      if (vt) {
-        const dissent = (vt.upside < 0 && card.consensus_direction === "bullish") || (vt.upside > 0 && card.consensus_direction === "bearish");
-        const nums = `$${vt.target_price.toFixed(2)} <em class="${vt.upside>=0?'up':'down'}">(${vt.upside>=0?'+':''}${(vt.upside*100).toFixed(1)}%)</em> · fair $${vt.fair_value.toFixed(2)} vs $${vt.current_price.toFixed(2)}`;
+      if (vt && vt.current_price) {
+        const fairGap = vt.fair_value / vt.current_price - 1;
+        const dissent = (fairGap < 0 && card.consensus_direction === "bullish") || (fairGap > 0 && card.consensus_direction === "bearish");
+        const nums = `fair value ~$${vt.fair_value.toFixed(2)} <em class="${fairGap>=0?'up':'down'}">(${fairGap>=0?'+':''}${(fairGap*100).toFixed(1)}% vs $${vt.current_price.toFixed(2)})</em>`;
         targetFact = dissent
-          ? `<div class="fact"><span>valuation dissent</span><strong><em class="down">the valuation analyst disagrees with the ${esc(card.consensus_direction)} consensus</em> — its conservative models see ${nums}. One voice of ${(card.agents||[]).length}; see its card below for why.</strong></div>`
-          : `<div class="fact"><span>12mo target</span><strong>${nums} <span class="audit-detail">(valuation analyst's model)</span></strong></div>`;
+          ? `<div class="fact"><span>valuation variant</span><strong>the valuation analyst's conservative model sees ${nums} — <em class="down">one lens of ${(card.agents||[]).length}, dissenting from the ${esc(card.consensus_direction)} desk call</em>. See its card below for why.</strong></div>`
+          : `<div class="fact"><span>valuation variant</span><strong>${nums} <span class="audit-detail">· valuation analyst's conservative model, not the desk's target</span></strong></div>`;
       }
       return `<article class="signal-card">
         <div class="card-head"><div class="ticker">${esc(card.ticker)}</div>

@@ -63,3 +63,6 @@ def test_context_flags_valuation_dissent_on_bullish_consensus():
     ctx = signal_cards_context_text(rec)
     assert "DISAGREES with the bullish consensus" in ctx
     assert "dissent" in ctx
+    assert "valuation variant" in ctx
+    # must NOT present the conservative model as the desk's own price target
+    assert "desk's own price target" in ctx or "not the desk" in ctx

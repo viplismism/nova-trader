@@ -309,17 +309,19 @@ def signal_cards_context_text(recommendation: Recommendation) -> str:
         ])
         if card.valuation_target is not None:
             vt = card.valuation_target
-            dissent = (vt.upside < 0 and card.consensus_direction == "bullish") or \
-                      (vt.upside > 0 and card.consensus_direction == "bearish")
+            fair_gap = (vt.fair_value / vt.current_price - 1) if vt.current_price else 0.0
+            dissent = (fair_gap < 0 and card.consensus_direction == "bullish") or \
+                      (fair_gap > 0 and card.consensus_direction == "bearish")
             note = (
-                " NOTE: this target comes from the valuation analyst alone (a deliberately "
-                f"conservative intrinsic-value model) and DISAGREES with the {card.consensus_direction} "
-                "consensus — present it as that analyst's dissent, never as the desk's own target."
-                if dissent else " (valuation analyst's model)"
+                " NOTE: this is the valuation analyst alone (a deliberately conservative "
+                f"intrinsic-value model) and DISAGREES with the {card.consensus_direction} "
+                "consensus — present it as that one analyst's dissent (the 'valuation variant'), "
+                "NEVER as the desk's own price target."
+                if dissent else " (the 'valuation variant' — this one analyst's conservative model, not the desk's target)"
             )
             lines.append(
-                f"Valuation analyst 12-month target: ${vt.target_price:,.2f} ({vt.upside:+.1%} vs ${vt.current_price:,.2f}); "
-                f"intrinsic fair value ${vt.fair_value:,.2f}; cost of equity {vt.cost_of_equity:.1%}.{note}"
+                f"Valuation variant (conservative intrinsic-value model): fair value ${vt.fair_value:,.2f} "
+                f"({fair_gap:+.1%} vs ${vt.current_price:,.2f} price).{note}"
             )
         if card.quantity:
             lines.append(f"Approved size: {card.quantity} shares.")
