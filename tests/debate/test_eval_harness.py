@@ -166,3 +166,4 @@ def test_recorder_save_preserves_stamped_user(tmp_path):
     saved = DebateRecorder.load(rec.run_id, base_dir=tmp_path)
     assert saved["input"]["user"] == "vipul"
     assert saved["input"]["ticker"] == "NVDA"
+    assert (rec.dir / "recent.json").is_file()

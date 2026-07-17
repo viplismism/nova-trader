@@ -513,6 +513,7 @@ def _stamp_run_user(run_id: str, user: str) -> None:
     """Record who ran a Signals run alongside its trajectory (best-effort)."""
     try:
         (runs_root() / run_id / "user.json").write_text(json.dumps({"user": user}))
+        RunRecorder(run_id).update_recent_user(user)
     except Exception:  # attribution must never break a run
         pass
 

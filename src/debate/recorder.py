@@ -78,6 +78,7 @@ class DebateRecorder:
             merged_input = {**(result.get("input") or {}), **self.input}
             payload = {"run_id": self.run_id, "usage": usage_str, **result, "input": merged_input}
             (self.dir / "debate.json").write_text(json.dumps(payload, default=str, indent=2))
+            (self.dir / "recent.json").write_text(json.dumps(self._recent_row(payload), default=str, indent=2))
             with (self.dir / "trajectory.jsonl").open("w") as fh:
                 for c in self.calls:
                     fh.write(json.dumps(c, default=str) + "\n")
@@ -126,21 +127,35 @@ class DebateRecorder:
             dirs = [d for d in root.iterdir() if d.is_dir() and d.name.startswith("debate-")]
         except Exception:  # pragma: no cover
             return []
-        dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+        dirs = [d for d in dirs if (d / "debate.json").is_file()]
+        dirs.sort(key=lambda d: (d / "debate.json").stat().st_mtime, reverse=True)
         rows: list[dict[str, Any]] = []
         for d in dirs[:limit]:
             try:
-                data = json.loads((d / "debate.json").read_text())
+                row = json.loads((d / "recent.json").read_text())
             except Exception:
-                continue
-            memo = data.get("memo", {})
-            inp = data.get("input", {})
-            rows.append({
-                "run_id": data.get("run_id", d.name),
-                "ticker": inp.get("ticker", ""),
-                "question": inp.get("question", ""),
-                "conviction": memo.get("conviction", ""),
-                "lean": memo.get("directional_lean", ""),
-                "user": inp.get("user", ""),
-            })
+                try:
+                    data = json.loads((d / "debate.json").read_text())
+                except Exception:
+                    continue
+                row = cls._recent_row(data, d.name)
+                # Lazily migrate historical debates to the compact picker format.
+                try:
+                    (d / "recent.json").write_text(json.dumps(row, indent=2))
+                except OSError:
+                    pass
+            rows.append(row)
         return rows
+
+    @staticmethod
+    def _recent_row(data: dict[str, Any], fallback_run_id: str = "") -> dict[str, Any]:
+        memo = data.get("memo", {}) or {}
+        inp = data.get("input", {}) or {}
+        return {
+            "run_id": data.get("run_id", fallback_run_id),
+            "ticker": inp.get("ticker", ""),
+            "question": inp.get("question", ""),
+            "conviction": memo.get("conviction", ""),
+            "lean": memo.get("directional_lean", ""),
+            "user": inp.get("user", ""),
+        }

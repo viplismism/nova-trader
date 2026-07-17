@@ -71,6 +71,20 @@ class RunRecorder:
 
     def write_recommendation(self, recommendation: BaseModel) -> None:
         self._write_json("recommendation.json", recommendation)
+        self._write_recent_summary(_dump(recommendation))
+
+    def update_recent_user(self, user: str) -> None:
+        """Add attribution to the lightweight recent-run row after web auth stamps it."""
+        path = self.dir / "recent.json"
+        try:
+            row = json.loads(path.read_text())
+        except (OSError, ValueError):
+            try:
+                row = self._recent_row(json.loads((self.dir / "recommendation.json").read_text()))
+            except (OSError, ValueError):
+                return
+        row["user"] = user
+        self._write_json("recent.json", row)
 
     # ── Append-only writes ──────────────────────────────────
 
@@ -182,29 +196,49 @@ class RunRecorder:
                     and (d / "recommendation.json").is_file()]
         except FileNotFoundError:
             return []
-        dirs.sort(key=lambda d: d.stat().st_mtime, reverse=True)
+        # Sort by the immutable result timestamp. Creating a lightweight cache for an
+        # older run must not make that run look new in the picker.
+        dirs.sort(key=lambda d: (d / "recommendation.json").stat().st_mtime, reverse=True)
         rows: list[dict[str, Any]] = []
         for d in dirs[:limit]:
             try:
-                rec = json.loads((d / "recommendation.json").read_text())
+                row = json.loads((d / "recent.json").read_text())
             except (OSError, ValueError):
-                continue
-            tickers = rec.get("tickers", []) or []
-            consensus = rec.get("consensus", {}) or {}
-            first = consensus.get(tickers[0], {}) if tickers else {}
-            try:
-                user = json.loads((d / "user.json").read_text()).get("user", "")
-            except (OSError, ValueError):
-                user = ""
-            rows.append({
-                "run_id": rec.get("run_id", d.name),
-                "tickers": tickers,
-                "as_of": rec.get("as_of", ""),
-                "stars": first.get("stars", ""),
-                "stars_label": first.get("stars_label", ""),
-                "user": user,
-            })
+                try:
+                    rec = json.loads((d / "recommendation.json").read_text())
+                except (OSError, ValueError):
+                    continue
+                row = cls._recent_row(rec, d)
+                # Backfill historical runs once; future picker loads read this tiny file.
+                try:
+                    (d / "recent.json").write_text(json.dumps(row, indent=2))
+                except OSError:
+                    pass
+            rows.append(row)
         return rows
+
+    @staticmethod
+    def _recent_row(rec: dict[str, Any], directory: Path | None = None) -> dict[str, Any]:
+        tickers = rec.get("tickers", []) or []
+        consensus = rec.get("consensus", {}) or {}
+        first = consensus.get(tickers[0], {}) if tickers else {}
+        user = ""
+        if directory is not None:
+            try:
+                user = json.loads((directory / "user.json").read_text()).get("user", "")
+            except (OSError, ValueError):
+                pass
+        return {
+            "run_id": rec.get("run_id", directory.name if directory else ""),
+            "tickers": tickers,
+            "as_of": rec.get("as_of", ""),
+            "stars": first.get("stars", ""),
+            "stars_label": first.get("stars_label", ""),
+            "user": user,
+        }
+
+    def _write_recent_summary(self, rec: dict[str, Any]) -> None:
+        self._write_json("recent.json", self._recent_row(rec))
 
     # ── Internal ───────────────────────────────────────────
 

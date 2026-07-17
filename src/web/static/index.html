@@ -651,7 +651,10 @@
       if(b.activity.size===0){
         for(const card of b.cards) for(const a of (card.agents||[])){
           const label = a.status==="ok" ? `done · ${a.direction} ${Math.round((a.confidence||0)*100)}%` : `done · ${a.status}`;
-          b.activity.set(`${a.agent_id}:${card.ticker}`,{agent:a.agent_id,ticker:card.ticker,status:"done",analysis:label});
+          const row={agent:a.agent_id,ticker:card.ticker,status:"done",analysis:label};
+          const key=`${a.agent_id}:${card.ticker}`;
+          b.activity.set(key,row);
+          b.timeline.push({...row,key,received_at:"saved run"});
         }
       }
       setState("ready","signals"); $("runButton").disabled=false; $("stopButton").disabled=true;
@@ -861,7 +864,8 @@
       closeSources(); setState("closed","debate"); $("debateButton").disabled=false; $("debateStop").disabled=true;
     });
     $("question").addEventListener("keydown",e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); $("askForm").requestSubmit(); } });
-    setMode(state.mode);  // initialize the default (signals) view + load its recent-runs list
+    setMode(state.mode);  // initialize the default view
+    loadRecent();         // warm the hidden debate picker so switching modes is immediate
   </script>
 </body>
 </html>
