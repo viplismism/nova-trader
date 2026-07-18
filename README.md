@@ -39,7 +39,7 @@ SEC_USER_AGENT=nova-trader/0.1 you@example.com
 | | **Signals** (deterministic council) | **Debate** (research desk) |
 |---|---|---|
 | Input | tickers + agent set | one ticker + a free-text **question** + horizon + evidence source |
-| Engine | ~7 analysts score the ticker → consensus → risk limits → portfolio decision | supervisor → 4 parallel specialists → bear → synthesizer |
+| Engine | 9 default analysts score the ticker → consensus → risk limits → portfolio decision | supervisor → 4 parallel specialists → bear → synthesizer |
 | Models | bounded JSON per agent (any provider) | Anthropic only: Opus (reason) + Sonnet/Haiku (specialists) |
 | Output | buy/hold/sell + reasoning + risk limits | cited, conviction-scored memo (bull/base/bear, risks) |
 | Speed/cost | ~30–90s, cheap | minutes (see tiers below) |

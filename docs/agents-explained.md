@@ -1,9 +1,11 @@
+> **Current methodology:** this overview predates the full formula audit. For the exact current formulas, thresholds, confidence meanings, fallbacks, and known limitations, use [AlphaDesk analyst numbers and formulas](analyst-numbers-audit.md). In particular, the old 12-month target described in earlier versions has been retired.
+
 <aside>
 🧭
 
 AlphaDesk is an investment-research system built from two complementary engines:
 
-- **Signals engine:** eight deterministic agents plus two LLM-assisted research agents that convert market, financial, news, insider, web, and SEC data into directional signals.
+- **Signals engine:** nine deterministic agents plus two LLM-assisted research agents are registered; the normal default run uses eight deterministic agents plus Warren Buffett.
 - **Debate engine:** an LLM research pod that plans, investigates, challenges, and synthesizes an investment memo from evidence.
 
 The goal of this page is to make every agent easy to understand at two levels: **what it is meant to contribute** and **what it actually does technically**.
@@ -20,7 +22,7 @@ AlphaDesk has three major layers:
 
 ### Engine overview
 
-- **Signals engine:** eight deterministic rules-based agents plus two LLM-assisted agents: Adaptive Research and Warren Buffett. The rules-based agents are repeatable; the LLM-assisted agents add planning, synthesis, or refinement.
+- **Signals engine:** nine deterministic rules-based agents plus two LLM-assisted agents are registered. Adaptive Research and Social Sentiment are optional rather than part of the normal default set.
 - **Decision layer:** combines signals, applies risk constraints, and generates portfolio actions.
 - **Debate engine:** a research pod made of a planner, specialists, bear challenger, and synthesizer. This layer is evidence-led and memo-oriented rather than purely score-oriented.
 
@@ -111,7 +113,7 @@ It looks beyond one-period numbers and checks whether growth trends, valuation, 
 
 The Valuation Analyst is AlphaDesk's intrinsic-value engine. Its job is to answer: **what is the company worth compared with what the market is currently pricing?**
 
-It does not rely on a single valuation technique. Instead, it blends several models so that the conclusion is not overly dependent on one assumption set. It also produces a 12-month price target, which makes the valuation output easier to connect to portfolio decisions and upside/downside framing.
+It does not rely on a single valuation technique. Instead, it blends several models so that the conclusion is not overly dependent on one assumption set. The result is a present model-value comparison with market cap, not a 12-month market-price forecast.
 
 ### What it actually does
 
@@ -123,15 +125,12 @@ It does not rely on a single valuation technique. Instead, it blends several mod
     - Residual Income: 10%.
 - **DCF detail:** multi-stage model with bear / base / bull scenarios and CAPM-based WACC.
 - **Gap calculation:** compares weighted intrinsic value against current market cap.
-- **12-month target logic:**
-    - Fair value per share = current price × (1 + valuation gap).
-    - Target price = fair value × (1 + cost of equity; currently ~10.5%, from CAPM: 4.5% risk-free + 6% equity premium).
-    - Reports target price, fair value, and upside percentage.
+- **Displayed comparison:** each method's company-level value and percentage gap versus current market cap.
 - **Decision rule:**
     - Bullish if gap > +15%.
     - Bearish if gap < -15%.
     - Neutral otherwise.
-- **Output:** direction, confidence, valuation gap, fair value, target price, and upside.
+- **Output:** direction, confidence, weighted valuation gap, and each contributing method's implied company value versus market cap.
 
 ---
 

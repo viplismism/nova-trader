@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Multi-agent AI trading recommendation system — research, signals, risk, and portfolio decision support"
 authors = []
 readme = "README.md"
-include = ["src/web/static/index.html"]
+include = ["src/web/static/*.html"]
 packages = [
     { include = "src", from = "." },
 ]

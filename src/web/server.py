@@ -109,6 +109,11 @@ def create_app() -> FastAPI:
     async def index() -> str:
         return files("src.web.static").joinpath("index.html").read_text()
 
+    @app.get("/methodology", response_class=HTMLResponse)
+    async def methodology() -> str:
+        """Human-readable audit of every analyst number and formula."""
+        return files("src.web.static").joinpath("analyst-numbers-audit.html").read_text()
+
     @app.get("/api/health")
     async def health() -> dict[str, str]:
         return {"ok": "true"}
