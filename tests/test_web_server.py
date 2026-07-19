@@ -8,15 +8,15 @@ def test_web_app_imports():
     assert app.title == "AlphaDesk"
 
 
-def test_methodology_page_is_served():
+def test_internal_methodology_is_not_publicly_served():
     client = TestClient(app)
-    simple = client.get("/methodology")
-    audit = client.get("/methodology/audit")
-    trust = client.get("/methodology/trust-audit")
-    assert simple.status_code == audit.status_code == trust.status_code == 200
-    assert "the simple version" in simple.text
-    assert "AlphaDesk analyst numbers and formulas" in audit.text
-    assert "AlphaDesk analyst trust audit" in trust.text
+    for path in (
+        "/methodology",
+        "/methodology/technical",
+        "/methodology/audit",
+        "/methodology/trust-audit",
+    ):
+        assert client.get(path).status_code == 404
 
 
 def test_parse_tickers_deduplicates_and_validates():
