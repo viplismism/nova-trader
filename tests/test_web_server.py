@@ -9,10 +9,14 @@ def test_web_app_imports():
 
 
 def test_methodology_page_is_served():
-    response = TestClient(app).get("/methodology")
-    assert response.status_code == 200
-    assert "AlphaDesk analyst numbers and formulas" in response.text
-    assert "Consensus confidence" in response.text
+    client = TestClient(app)
+    simple = client.get("/methodology")
+    audit = client.get("/methodology/audit")
+    trust = client.get("/methodology/trust-audit")
+    assert simple.status_code == audit.status_code == trust.status_code == 200
+    assert "the simple version" in simple.text
+    assert "AlphaDesk analyst numbers and formulas" in audit.text
+    assert "AlphaDesk analyst trust audit" in trust.text
 
 
 def test_parse_tickers_deduplicates_and_validates():

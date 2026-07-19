@@ -75,7 +75,6 @@ def run_valuation_agent(ctx: RunContext, view: FinancialsView, recorder=None) ->
             total_debt=getattr(li_curr, "total_debt", None),
             cash=getattr(li_curr, "cash_and_equivalents", None),
             interest_coverage=most_recent.interest_coverage,
-            debt_to_equity=most_recent.debt_to_equity,
         )
 
         fcf_history = [
@@ -85,11 +84,6 @@ def run_valuation_agent(ctx: RunContext, view: FinancialsView, recorder=None) ->
         ]
         dcf_results = calculate_dcf_scenarios(
             fcf_history=fcf_history,
-            growth_metrics={
-                "revenue_growth": most_recent.revenue_growth,
-                "fcf_growth": most_recent.free_cash_flow_growth,
-                "earnings_growth": most_recent.earnings_growth,
-            },
             wacc=wacc,
             market_cap=most_recent.market_cap or view.market_cap or 0,
             revenue_growth=most_recent.revenue_growth,

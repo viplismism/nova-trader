@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>AlphaDesk — Analyst numbers and formulas</title>
+  <title>AlphaDesk — Formula audit</title>
   <style>
     :root { --bg:#0d110f; --panel:#121714; --ink:#e7ebe8; --muted:#9ba39e; --teal:#9ecdc7;
       --line:#303833; --amber:#dfc182; --red:#dc8f91; --code:#171d19; }
@@ -50,7 +50,9 @@
   </style>
 </head>
 <body>
-  <nav class="top"><span class="brand">ALPHADESK</span><a href="/">← back to the desk</a>
+  <nav class="top"><span class="brand">ALPHADESK</span><a href="/">← desk</a>
+    <a href="/methodology">simple guide</a><a href="/methodology/audit">formula audit</a>
+    <a href="/methodology/trust-audit">trust audit</a>
     <button onclick="window.print()">print / save pdf</button></nav>
   <main><h1 id="alphadesk-analyst-numbers-and-formulas">AlphaDesk analyst numbers and formulas</h1>
 <h2 id="a-plain-language-audit-of-where-every-result-comes-from">A plain-language audit of where every result comes from</h2>
@@ -571,10 +573,8 @@ initial residual income = net income - 10% × book value</code></pre>
 <h3 id="audit-notes">Audit notes</h3>
 <ul>
 <li><strong>Cost-of-debt concern:</strong> <code>10 / interest coverage</code> is used as a decimal rate. At 20× coverage this adds 50 percentage points, not 0.5 percentage points. This can push WACC to its 20% cap and materially depress DCF values.</li>
-<li>Debt/equity is passed into the WACC helper but is not used by its formula.</li>
 <li>Working capital, total debt, and cash are not included in the primary default line-item request. Unless the source returns extra fields or the Yahoo fallback supplies them, Owner Earnings assumes zero working-capital change and WACC assumes zero net debt.</li>
-<li>The DCF receives revenue, FCF, and earnings-growth metrics, but only revenue growth is actually used.</li>
-<li>Scenario configuration includes a terminal-growth adjustment, but that adjustment is never applied.</li>
+<li>The DCF uses revenue growth as its explicit forecast-growth input; historical FCF affects its starting value and quality adjustment.</li>
 <li>DCF value is compared directly with equity market cap without an explicit cash/debt bridge. The interpretation depends on whether the supplied FCF is treated as equity FCF.</li>
 <li>The base FCF uses the greater of latest FCF and 85% of the three-period average. That protects against one depressed year but is not always the most conservative base.</li>
 <li>Working-capital change is used by Owner Earnings, but <code>working_capital</code> is not in the primary default line-item request. It may therefore default to zero unless the fallback supplies it.</li>
@@ -1143,7 +1143,6 @@ citation accuracy = supported findings / total findings</code></pre>
 <li>Constrain Buffett's LLM result to the deterministic hint, or explicitly label it as an LLM override.</li>
 <li>Add sector-relative thresholds where absolute ratios are inappropriate.</li>
 <li>Complete portfolio execution rules: sell quantities, short limits, and multi-pair long/short handling.</li>
-<li>Remove unused Valuation inputs/configuration or wire them into the formulas.</li>
 <li>Add source de-duplication and credibility/recency weighting to Web and News signals.</li>
 </ol>
 <hr>

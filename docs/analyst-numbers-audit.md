@@ -507,10 +507,8 @@ If market cap is `$1.60T` and blended model value is `$680B`, the analyst is say
 ### Audit notes
 
 - **Cost-of-debt concern:** `10 / interest coverage` is used as a decimal rate. At 20× coverage this adds 50 percentage points, not 0.5 percentage points. This can push WACC to its 20% cap and materially depress DCF values.
-- Debt/equity is passed into the WACC helper but is not used by its formula.
 - Working capital, total debt, and cash are not included in the primary default line-item request. Unless the source returns extra fields or the Yahoo fallback supplies them, Owner Earnings assumes zero working-capital change and WACC assumes zero net debt.
-- The DCF receives revenue, FCF, and earnings-growth metrics, but only revenue growth is actually used.
-- Scenario configuration includes a terminal-growth adjustment, but that adjustment is never applied.
+- The DCF uses revenue growth as its explicit forecast-growth input; historical FCF affects its starting value and quality adjustment.
 - DCF value is compared directly with equity market cap without an explicit cash/debt bridge. The interpretation depends on whether the supplied FCF is treated as equity FCF.
 - The base FCF uses the greater of latest FCF and 85% of the three-period average. That protects against one depressed year but is not always the most conservative base.
 - Working-capital change is used by Owner Earnings, but `working_capital` is not in the primary default line-item request. It may therefore default to zero unless the fallback supplies it.
@@ -1134,8 +1132,7 @@ These are not cosmetic changes; they affect interpretation or output quality.
 8. Constrain Buffett's LLM result to the deterministic hint, or explicitly label it as an LLM override.
 9. Add sector-relative thresholds where absolute ratios are inappropriate.
 10. Complete portfolio execution rules: sell quantities, short limits, and multi-pair long/short handling.
-11. Remove unused Valuation inputs/configuration or wire them into the formulas.
-12. Add source de-duplication and credibility/recency weighting to Web and News signals.
+11. Add source de-duplication and credibility/recency weighting to Web and News signals.
 
 ---
 

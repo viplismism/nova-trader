@@ -22,15 +22,6 @@ logger = logging.getLogger(__name__)
 AGENT_ID = "fundamentals"
 
 
-def _direction_from_score(score: int, total: int) -> tuple[str, float]:
-    """Map a sub-score (0..total) to a direction + confidence."""
-    if score >= total * 0.66:
-        return "bullish", score / total
-    if score == 0:
-        return "bearish", 0.7
-    return "neutral", 0.5
-
-
 def run_fundamentals_agent(ctx: RunContext, view: FinancialsView, recorder=None) -> Signal:
     if not view.metrics:
         return Signal.abstained(agent_id=AGENT_ID, ticker=view.ticker, reason="No financial metrics")

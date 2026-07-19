@@ -1,0 +1,9 @@
+hey deep, i went through the analyst system end to end because the valuation issue made me realise we have too many different kinds of outputs presented as if they are equally reliable.
+
+the important correction is that most default analysts are deterministic, so the llm is not inventing most numbers. but deterministic does not necessarily mean trustworthy. for example, web, news and sec currently turn keyword counts into precise-looking bullish or bearish votes, insider sentiment counts transactions without considering their size or reason, and buffett lets an llm override its deterministic score.
+
+i think the cleaner model is to have fundamentals, growth and valuation as the core business-analysis models after we fix and validate their assumptions, with technical shown separately as a market-timing signal. sec filings, web, news, insider and social should probably become evidence or risk flags instead of equal consensus voters. adaptive research, buffett and debate can remain explicitly labelled llm-assisted research rather than silently adding another percentage to the score.
+
+the audit also found some concrete issues: the growth trend looks like it reads newest-first periods backward, the valuation debt-cost formula can make wacc excessively punitive, missing data sometimes behaves like negative evidence, consensus confidence is only the average confidence of participating analysts rather than confidence in the final direction, and the portfolio layer uses that number for sizing.
+
+i’ve documented every formula and input, but i’d like your help deciding the intended investment horizon, which analysts should actually vote, which should only provide evidence, what valuation assumptions we want to defend, and how we should calibrate confidence against historical outcomes. after that we can simplify the council and change one methodology rule at a time with before/after tests.

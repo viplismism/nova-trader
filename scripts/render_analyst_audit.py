@@ -1,8 +1,8 @@
-"""Render the analyst methodology Markdown into a self-contained web page.
+"""Render the methodology Markdown documents into self-contained web pages.
 
 No runtime Markdown dependency is needed: this intentionally small renderer covers
 the headings, tables, lists, quotes, code blocks, and inline formatting used by the
-audit. Run it after editing docs/analyst-numbers-audit.md.
+documents. Run it after editing any methodology source under ``docs/``.
 """
 
 from __future__ import annotations
@@ -13,8 +13,12 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "docs" / "analyst-numbers-audit.md"
-OUTPUT = ROOT / "src" / "web" / "static" / "analyst-numbers-audit.html"
+STATIC = ROOT / "src" / "web" / "static"
+TARGETS = [
+    (ROOT / "docs" / "methodology-simple.md", STATIC / "analyst-methodology.html", "AlphaDesk — Methodology"),
+    (ROOT / "docs" / "analyst-numbers-audit.md", STATIC / "analyst-numbers-audit.html", "AlphaDesk — Formula audit"),
+    (ROOT / "docs" / "analyst-trust-audit.md", STATIC / "analyst-trust-audit.html", "AlphaDesk — Trust audit"),
+]
 
 
 def inline(text: str) -> str:
@@ -158,14 +162,14 @@ def render(markdown: str) -> str:
     return "\n".join(out)
 
 
-def page(body: str) -> str:
+def page(body: str, title: str) -> str:
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <title>AlphaDesk — Analyst numbers and formulas</title>
+  <title>{html.escape(title)}</title>
   <style>
     :root {{ --bg:#0d110f; --panel:#121714; --ink:#e7ebe8; --muted:#9ba39e; --teal:#9ecdc7;
       --line:#303833; --amber:#dfc182; --red:#dc8f91; --code:#171d19; }}
@@ -211,7 +215,9 @@ def page(body: str) -> str:
   </style>
 </head>
 <body>
-  <nav class="top"><span class="brand">ALPHADESK</span><a href="/">← back to the desk</a>
+  <nav class="top"><span class="brand">ALPHADESK</span><a href="/">← desk</a>
+    <a href="/methodology">simple guide</a><a href="/methodology/audit">formula audit</a>
+    <a href="/methodology/trust-audit">trust audit</a>
     <button onclick="window.print()">print / save pdf</button></nav>
   <main>{body}</main>
 </body>
@@ -220,5 +226,6 @@ def page(body: str) -> str:
 
 
 if __name__ == "__main__":
-    OUTPUT.write_text(page(render(SOURCE.read_text())), encoding="utf-8")
-    print(f"rendered {SOURCE.relative_to(ROOT)} -> {OUTPUT.relative_to(ROOT)}")
+    for source, output, title in TARGETS:
+        output.write_text(page(render(source.read_text()), title), encoding="utf-8")
+        print(f"rendered {source.relative_to(ROOT)} -> {output.relative_to(ROOT)}")

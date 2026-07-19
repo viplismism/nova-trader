@@ -7,17 +7,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-DEFAULT_AGENTS = [
-    "technical",
-    "fundamentals",
-    "sec_filings",
-    "web_research",
-    "growth",
-    "valuation",
-    "news_sentiment",
-    "insider_sentiment",
-    "warren_buffett",
-]
+from src.registry import default_agent_ids
+
+DEFAULT_AGENTS = default_agent_ids()
 
 PROVIDERS = [
     "Anthropic",

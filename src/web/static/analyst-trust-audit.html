@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>AlphaDesk — Trust audit</title>
+  <style>
+    :root { --bg:#0d110f; --panel:#121714; --ink:#e7ebe8; --muted:#9ba39e; --teal:#9ecdc7;
+      --line:#303833; --amber:#dfc182; --red:#dc8f91; --code:#171d19; }
+    * { box-sizing:border-box; }
+    html { scroll-behavior:smooth; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.72 ui-monospace,SFMono-Regular,
+      Menlo,Monaco,Consolas,"Liberation Mono",monospace; }
+    .top { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:18px; padding:12px 22px;
+      border-bottom:1px solid var(--line); background:rgba(13,17,15,.94); backdrop-filter:blur(12px); }
+    .brand { color:var(--teal); font-weight:800; letter-spacing:.08em; }
+    .top a { color:var(--muted); text-decoration:none; font-size:13px; }
+    .top a:hover { color:var(--teal); }
+    .top button { margin-left:auto; border:1px solid var(--line); border-radius:6px; padding:7px 11px;
+      color:var(--ink); background:var(--panel); font:inherit; font-size:12px; cursor:pointer; }
+    main { width:min(1040px,calc(100% - 36px)); margin:34px auto 100px; padding:38px 52px 70px;
+      border:1px solid var(--line); border-radius:14px; background:var(--panel); box-shadow:0 24px 80px rgba(0,0,0,.24); }
+    h1,h2,h3,h4 { color:var(--teal); line-height:1.3; scroll-margin-top:74px; }
+    h1 { margin:0 0 8px; font-size:36px; letter-spacing:-.04em; }
+    h2 { margin:54px 0 18px; padding-bottom:9px; border-bottom:1px solid var(--line); font-size:25px; }
+    h3 { margin:34px 0 12px; font-size:18px; color:var(--amber); }
+    h4 { color:var(--ink); }
+    p { margin:12px 0; }
+    strong { color:#fff; }
+    a { color:var(--teal); }
+    hr { margin:42px 0; border:0; border-top:1px solid var(--line); }
+    blockquote { margin:22px 0; padding:16px 20px; border-left:4px solid var(--amber); border-radius:0 8px 8px 0;
+      color:#f3e6ca; background:#1b1a14; font-size:17px; }
+    ul,ol { padding-left:25px; } li { margin:6px 0; }
+    code { padding:2px 5px; border:1px solid var(--line); border-radius:4px; color:#c9ded9; background:var(--code); }
+    pre { overflow:auto; margin:18px 0; padding:17px 19px; border:1px solid var(--line); border-radius:8px;
+      background:var(--code); line-height:1.55; }
+    pre code { padding:0; border:0; background:transparent; }
+    .table-wrap { overflow:auto; margin:20px 0 26px; border:1px solid var(--line); border-radius:9px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; line-height:1.5; }
+    th,td { padding:11px 13px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+    th { color:var(--teal); background:#171d19; } tr:last-child td { border-bottom:0; }
+    tbody tr:hover { background:#151b17; }
+    @media(max-width:700px) { .top { padding:10px 14px; } main { width:100%; margin:0; padding:28px 18px 60px;
+      border-left:0; border-right:0; border-radius:0; } h1 { font-size:28px; } h2 { font-size:22px; } }
+    @media print { body { background:#fff; color:#111; font:11pt/1.5 Georgia,serif; } .top { display:none; }
+      main { width:auto; margin:0; padding:0; border:0; box-shadow:none; background:#fff; } h1,h2,h3 { color:#163f3a; }
+      code,pre { color:#111; background:#f5f5f5; } .table-wrap { overflow:visible; } blockquote { color:#222; background:#f7f3e9; } }
+  </style>
+</head>
+<body>
+  <nav class="top"><span class="brand">ALPHADESK</span><a href="/">← desk</a>
+    <a href="/methodology">simple guide</a><a href="/methodology/audit">formula audit</a>
+    <a href="/methodology/trust-audit">trust audit</a>
+    <button onclick="window.print()">print / save pdf</button></nav>
+  <main><h1 id="alphadesk-analyst-trust-audit">AlphaDesk analyst trust audit</h1>
+<h2 id="purpose">Purpose</h2>
+<p>This audit classifies every analyst by what it reads, how it reaches a result, whether an LLM controls the result, whether the evidence overlaps another analyst, and whether it should participate in the core consensus.</p>
+<p>The classification is about current implementation quality, not whether the underlying financial idea is legitimate.</p>
+<h2 id="trust-categories">Trust categories</h2>
+<ul>
+<li><strong>Direct:</strong> based on market prices, statements, transactions, or primary filings.</li>
+<li><strong>Derived:</strong> deterministic finance/math applied to direct inputs.</li>
+<li><strong>Heuristic:</strong> simplified rules or lexical counts used as a proxy.</li>
+<li><strong>LLM-authored:</strong> a language model controls final stance or confidence.</li>
+</ul>
+<h2 id="analyst-matrix">Analyst matrix</h2>
+<div class="table-wrap"><table><thead><tr>
+<th>Analyst</th>
+<th>Input provenance</th>
+<th>Final result</th>
+<th>Main overlap</th>
+<th>Current risk</th>
+<th>Recommendation</th>
+</tr></thead><tbody>
+<tr>
+<td>Fundamentals</td>
+<td>Direct financial metrics</td>
+<td>Deterministic threshold score</td>
+<td>Growth, Valuation, Buffett</td>
+<td>Missing values fail checks; fixed sector-agnostic thresholds</td>
+<td><strong>Core after fixes</strong></td>
+</tr>
+<tr>
+<td>Growth</td>
+<td>Direct multi-period metrics</td>
+<td>Deterministic weighted score</td>
+<td>Fundamentals, Valuation</td>
+<td>Historical trend chronology appears reversed; missing fields score zero</td>
+<td><strong>Core after chronology fix</strong></td>
+</tr>
+<tr>
+<td>Valuation</td>
+<td>Direct financials plus model assumptions</td>
+<td>Deterministic four-model blend</td>
+<td>Fundamentals, Growth, Buffett</td>
+<td>WACC debt-cost bug; missing net-debt/WC inputs; false precision</td>
+<td><strong>Core after model fixes and sensitivity output</strong></td>
+</tr>
+<tr>
+<td>Technical</td>
+<td>Direct price/volume</td>
+<td>Deterministic five-strategy heuristic</td>
+<td>Risk uses same prices for a different purpose</td>
+<td>No minimum history; neutral dilution; several approximate indicators</td>
+<td><strong>Separate timing signal</strong></td>
+</tr>
+<tr>
+<td>SEC Filings</td>
+<td>Primary SEC passages</td>
+<td>Deterministic keyword heuristic</td>
+<td>Adaptive Research, Debate</td>
+<td>Excellent evidence source but weak semantic vote</td>
+<td><strong>Evidence only</strong></td>
+</tr>
+<tr>
+<td>Web Research</td>
+<td>Search titles/snippets</td>
+<td>Deterministic keyword heuristic</td>
+<td>News, Adaptive Research, Debate</td>
+<td>Duplicate/low-quality sources; no semantic verification</td>
+<td><strong>Evidence only</strong></td>
+</tr>
+<tr>
+<td>News Sentiment</td>
+<td>Provider labels or headline keywords</td>
+<td>Deterministic classifier</td>
+<td>Web Research</td>
+<td>Headline-only; no deduplication or source weighting</td>
+<td><strong>Evidence only</strong></td>
+</tr>
+<tr>
+<td>Insider Sentiment</td>
+<td>Reported insider transactions</td>
+<td>Deterministic count heuristic</td>
+<td>Buffett view receives same data but barely uses it</td>
+<td>Ignores size and transaction reason; tiny samples reach 95%</td>
+<td><strong>Evidence/risk flag only</strong></td>
+</tr>
+<tr>
+<td>Warren Buffett</td>
+<td>Direct financials transformed into scorecard</td>
+<td><strong>LLM controls final signal</strong></td>
+<td>Fundamentals and Valuation</td>
+<td>LLM can override deterministic hint; missing data penalized; persona label overstates authority</td>
+<td><strong>Remove from default; optional persona</strong></td>
+</tr>
+<tr>
+<td>Social Sentiment</td>
+<td>Reddit/community text</td>
+<td>Deterministic VADER heuristic</td>
+<td>News/Web narrative</td>
+<td>One viral post can dominate; comments mixed into post; weak causal value</td>
+<td><strong>Optional context only</strong></td>
+</tr>
+<tr>
+<td>Adaptive Research</td>
+<td>Web and SEC evidence</td>
+<td><strong>LLM controls final signal</strong></td>
+<td>Web, SEC, Debate</td>
+<td>Model-authored confidence; overlapping evidence becomes another vote</td>
+<td><strong>Move to deep research; no core vote</strong></td>
+</tr>
+</tbody></table></div>
+<h2 id="decision-layer-audit">Decision-layer audit</h2>
+<div class="table-wrap"><table><thead><tr>
+<th>Component</th>
+<th>Current behavior</th>
+<th>Risk</th>
+<th>Recommendation</th>
+</tr></thead><tbody>
+<tr>
+<td>Consensus score</td>
+<td>Signed analyst confidence divided by participant count</td>
+<td>Treats incompatible confidence scales as comparable; correlated evidence votes repeatedly</td>
+<td>Aggregate only calibrated core models; expose raw component scores</td>
+</tr>
+<tr>
+<td>Consensus confidence</td>
+<td>Average confidence regardless of direction</td>
+<td>Can be high when analysts strongly disagree</td>
+<td>Rename immediately; redesign as agreement × evidence quality × coverage</td>
+</tr>
+<tr>
+<td>STARS</td>
+<td>Label mapped from consensus score</td>
+<td>Exact ±0.10 boundary differs from direction boundary</td>
+<td>Align thresholds and document as a display label</td>
+</tr>
+<tr>
+<td>Risk Manager</td>
+<td>Volatility/correlation heuristic</td>
+<td>Formula discontinuities and comments disagree with implementation</td>
+<td>Fix boundaries; test every regime; expose inputs</td>
+</tr>
+<tr>
+<td>Portfolio Manager</td>
+<td>Converts consensus and limit into action</td>
+<td>Uses misleading consensus confidence for sizing; incomplete sell/short logic</td>
+<td>Do not execute live; finish and test state transitions first</td>
+</tr>
+</tbody></table></div>
+<h2 id="validation-status">Validation status</h2>
+<p>The system has strong run-level traceability but incomplete model-level validation.</p>
+<h3 id="present">Present</h3>
+<ul>
+<li>Saved input snapshot and per-agent views.</li>
+<li>Saved signals and final recommendation.</li>
+<li>Saved LLM prompts/responses.</li>
+<li>Structured source citations for filings/web evidence.</li>
+<li>Broad integration and UI test coverage.</li>
+</ul>
+<h3 id="missing-or-incomplete">Missing or incomplete</h3>
+<ul>
+<li>Dedicated threshold tests for Fundamentals, Growth, Valuation, Technical, Insider, and Buffett runners.</li>
+<li>Confidence calibration against outcomes.</li>
+<li>Per-source freshness and quality score.</li>
+<li>Valuation sensitivity tables and invariant tests.</li>
+<li>Missing-data contracts distinguishing “bad” from “unknown.”</li>
+<li>Independence/correlation analysis between analyst votes.</li>
+<li>A frozen methodology version attached to each displayed score.</li>
+<li>Decision-quality evaluation by market regime and investment horizon.</li>
+</ul>
+<h2 id="recommended-target">Recommended target</h2>
+<p>Do not delete useful data collection. Delete the assumption that every collected signal deserves an equal vote.</p>
+<p>The recommended target is:</p>
+<pre><code>CORE BUSINESS SCORE
+  fundamentals + growth + valuation
+
+SEPARATE MARKET-TIMING SCORE
+  technical
+
+EVIDENCE AND RISK FLAGS
+  SEC + web + news + insider + social
+
+EXPLICIT DEEP RESEARCH
+  adaptive + Buffett persona + debate</code></pre>
+<p>Before changing the production council, agree with Deep on:</p>
+<ol>
+<li>the intended investment horizon;</li>
+<li>which outputs are facts, scores, or opinions;</li>
+<li>whether Technical affects recommendation or only timing;</li>
+<li>how missing data should affect a score;</li>
+<li>which valuation assumptions are defensible;</li>
+<li>how confidence will be calibrated; and</li>
+<li>which historical benchmark will validate usefulness.</li>
+</ol></main>
+</body>
+</html>

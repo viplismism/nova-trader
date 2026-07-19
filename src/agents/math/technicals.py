@@ -1,9 +1,4 @@
-"""Technical analysis math helpers.
-
-These are imported by src/v2/agents/technical.py. The legacy entry
-function `technical_analyst_agent` has been removed — see the v2 agent
-for the current contract.
-"""
+"""Pure technical-analysis helpers used by :mod:`src.agents.technical`."""
 
 import math
 

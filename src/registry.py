@@ -123,6 +123,20 @@ AGENT_REGISTRY: dict[str, AgentSpec] = {
     ),
 }
 
+# One source of truth for the normal Signals council. Registered agents omitted
+# here remain available explicitly, but do not silently join a default run.
+DEFAULT_AGENT_IDS: tuple[str, ...] = (
+    "technical",
+    "fundamentals",
+    "sec_filings",
+    "web_research",
+    "growth",
+    "valuation",
+    "news_sentiment",
+    "insider_sentiment",
+    "warren_buffett",
+)
+
 
 def get_agent(agent_id: str) -> AgentSpec:
     if agent_id not in AGENT_REGISTRY:
@@ -132,3 +146,11 @@ def get_agent(agent_id: str) -> AgentSpec:
 
 def all_agent_ids() -> list[str]:
     return list(AGENT_REGISTRY.keys())
+
+
+def default_agent_ids() -> list[str]:
+    """Return a fresh copy of the default council, validated against the registry."""
+    missing = [agent_id for agent_id in DEFAULT_AGENT_IDS if agent_id not in AGENT_REGISTRY]
+    if missing:
+        raise RuntimeError(f"Default analysts are not registered: {missing}")
+    return list(DEFAULT_AGENT_IDS)

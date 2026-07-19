@@ -1,8 +1,4 @@
-"""Valuation math helpers.
-
-Reused by src/v2/agents/valuation.py. The legacy agent entry function
-has been removed — see the v2 agent for the current contract.
-"""
+"""Pure valuation helpers used by :mod:`src.agents.valuation`."""
 
 from __future__ import annotations
 
@@ -126,8 +122,7 @@ def calculate_cost_of_equity(
     risk_free_rate: float = 0.045,
     market_risk_premium: float = 0.06,
 ) -> float:
-    """Equity investor's required return via CAPM — the right rate to drift a
-    fair value forward into a 12-month price target."""
+    """Equity investor's required return via CAPM."""
     return risk_free_rate + beta_proxy * market_risk_premium
 
 
@@ -136,7 +131,6 @@ def calculate_wacc(
     total_debt: float | None,
     cash: float | None,
     interest_coverage: float | None,
-    debt_to_equity: float | None,
     beta_proxy: float = 1.0,
     risk_free_rate: float = 0.045,
     market_risk_premium: float = 0.06
@@ -183,13 +177,12 @@ def calculate_fcf_volatility(fcf_history: list[float]) -> float:
         mean_fcf = statistics.mean(positive_fcf)
         std_fcf = statistics.stdev(positive_fcf)
         return min(std_fcf / mean_fcf, 1.0) if mean_fcf > 0 else 0.8
-    except:
+    except statistics.StatisticsError:
         return 0.5
 
 
 def calculate_enhanced_dcf_value(
     fcf_history: list[float],
-    growth_metrics: dict,
     wacc: float,
     market_cap: float,
     revenue_growth: float | None = None
@@ -246,7 +239,6 @@ def calculate_enhanced_dcf_value(
 
 def calculate_dcf_scenarios(
     fcf_history: list[float],
-    growth_metrics: dict,
     wacc: float,
     market_cap: float,
     revenue_growth: float | None = None
@@ -254,9 +246,9 @@ def calculate_dcf_scenarios(
     """Calculate DCF under multiple scenarios."""
     
     scenarios = {
-        'bear': {'growth_adj': 0.5, 'wacc_adj': 1.2, 'terminal_adj': 0.8},
-        'base': {'growth_adj': 1.0, 'wacc_adj': 1.0, 'terminal_adj': 1.0},
-        'bull': {'growth_adj': 1.5, 'wacc_adj': 0.9, 'terminal_adj': 1.2}
+        'bear': {'growth_adj': 0.5, 'wacc_adj': 1.2},
+        'base': {'growth_adj': 1.0, 'wacc_adj': 1.0},
+        'bull': {'growth_adj': 1.5, 'wacc_adj': 0.9}
     }
     
     results = {}
@@ -268,7 +260,6 @@ def calculate_dcf_scenarios(
         
         results[scenario] = calculate_enhanced_dcf_value(
             fcf_history=fcf_history,
-            growth_metrics=growth_metrics,
             wacc=adjusted_wacc,
             market_cap=market_cap,
             revenue_growth=adjusted_revenue_growth

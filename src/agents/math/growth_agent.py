@@ -1,8 +1,4 @@
-"""Growth analyst math helpers.
-
-Reused by src/v2/agents/growth.py. The legacy agent entry function has
-been removed — see the v2 agent for the current contract.
-"""
+"""Pure growth-analysis helpers used by :mod:`src.agents.growth`."""
 
 from __future__ import annotations
 

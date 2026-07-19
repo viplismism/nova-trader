@@ -111,8 +111,18 @@ def create_app() -> FastAPI:
 
     @app.get("/methodology", response_class=HTMLResponse)
     async def methodology() -> str:
-        """Human-readable audit of every analyst number and formula."""
+        """Short, technical-reader-friendly explanation of the methodology."""
+        return files("src.web.static").joinpath("analyst-methodology.html").read_text()
+
+    @app.get("/methodology/audit", response_class=HTMLResponse)
+    async def methodology_audit() -> str:
+        """Complete formula-level audit of every analyst."""
         return files("src.web.static").joinpath("analyst-numbers-audit.html").read_text()
+
+    @app.get("/methodology/trust-audit", response_class=HTMLResponse)
+    async def methodology_trust_audit() -> str:
+        """Source-quality and decision-role audit for every analyst."""
+        return files("src.web.static").joinpath("analyst-trust-audit.html").read_text()
 
     @app.get("/api/health")
     async def health() -> dict[str, str]:

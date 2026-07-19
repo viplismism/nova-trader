@@ -4,7 +4,7 @@ Each view is the EXACT contract for what an agent can see.
 Pydantic enforces the contract — an agent that asks for fields not in
 its view simply won't compile.
 
-The mapping agent_id -> ViewClass lives in src/v2/registry.py.
+The mapping from ``agent_id`` to ``ViewClass`` lives in :mod:`src.registry`.
 """
 
 from __future__ import annotations

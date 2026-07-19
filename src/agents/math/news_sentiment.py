@@ -1,8 +1,4 @@
-"""News sentiment math helpers.
-
-Reused by src/v2/agents/news_sentiment.py. The legacy agent entry
-function has been removed — see the v2 agent for the current contract.
-"""
+"""Pure headline-sentiment helpers used by :mod:`src.agents.news_sentiment`."""
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from typing_extensions import Literal
